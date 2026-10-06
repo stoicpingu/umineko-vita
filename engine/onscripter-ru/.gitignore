@@ -1,0 +1,23 @@
+# OS-specific
+.DS_Store
+thumbs.db
+
+# Objects
+*.o
+*.exe
+Tools/nscdec/nscdec
+Tools/nscmake/nscmake
+CMakeLists.txt
+/Makefile
+/ciout
+
+# Xcode
+DerivedData
+xcuserdata
+xcshareddata
+project.xcworkspace
+build
+
+# IDEA
+.idea
+cmake-build-*/

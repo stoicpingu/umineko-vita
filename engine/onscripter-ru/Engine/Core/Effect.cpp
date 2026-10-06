@@ -1,0 +1,629 @@
+/**
+ *  Effect.cpp
+ *  ONScripter-RU
+ *
+ *  Effect executer core code.
+ *
+ *  Consult LICENSE file for licensing terms and copyright holders.
+ */
+
+/*
+ *  Uses emulation of Takashi Toyama's "cascade.dll", "whirl.dll",
+ *  "trvswave.dll", and "breakup.dll" NScripter plugin effects.
+ */
+
+#include "Engine/Core/ONScripter.hpp"
+#include "Engine/Components/Window.hpp"
+
+#ifndef PIVAS_INSTANT_REDUCE_MOTION_EFFECTS
+#define PIVAS_INSTANT_REDUCE_MOTION_EFFECTS 1
+#endif
+
+#ifndef PIVAS_RENDER_TRACE
+#define PIVAS_RENDER_TRACE 0
+#endif
+
+static char *dll = nullptr, *params = nullptr; //for dll-based effects
+
+extern uint32_t pivas_final_window_hold_until;     // ONScripter.cpp
+extern bool pivas_final_window_seen_live_dialogue; // ONScripter.cpp
+
+#if defined(PIVAS)
+void ONScripter::ensureVitaEffectTargets() {
+	if (!vita_effect_scene_dst)
+		vita_effect_scene_dst = gpu.createRenderTargetImage(window.canvas_width, window.canvas_height, 4);
+	if (!vita_effect_hud_dst)
+		vita_effect_hud_dst = gpu.createRenderTargetImage(window.canvas_width, window.canvas_height, 4);
+
+	if (!vita_effect_scene_dst->target)
+		GPU_GetTarget(vita_effect_scene_dst);
+	if (!vita_effect_hud_dst->target)
+		GPU_GetTarget(vita_effect_hud_dst);
+
+	// No clear: both targets are fully overwritten right after by
+	// copyGPUImageExact (same canvas dimensions, blending disabled), and
+	// each clear costs a GXM scene switch plus a full 1448x815 fill.
+}
+
+void ONScripter::freeVitaEffectTargets() {
+	GPU_FlushBlitBuffer();
+
+	for (GPU_Image **varPtr : {&vita_effect_scene_dst, &vita_effect_hud_dst}) {
+		GPU_Image *imagePtr = *varPtr;
+		if (imagePtr) {
+			gpu.freeImage(imagePtr);
+			*varPtr = nullptr;
+		}
+	}
+}
+
+void ONScripter::presentVitaReducedEffectTargets() {
+#if PIVAS_DYNAMIC_WINDOW_FINAL_DIRECT_ART
+	// Second presenter besides flushDirect, under the same no-text gap gate:
+	// a reduced effect run inside the gap (e.g. the window_effect after a
+	// script textoff) would otherwise flip an empty-textbox frame.
+	// runVitaReducedEffect has already committed the surfaces, so the next
+	// ungated flushDirect recomposes everything from them.
+	//
+	// leaveTextDisplayMode zeroes the hold before running the window_effect,
+	// so re-arm it under the same eligibility that draws the textbox art
+	// before consulting the gate. A script-intended hide is excluded, as in
+	// combineWithCamera, so the sticky click terms cannot bridge a textoff
+	// during a btnwait/menu and keep the window on screen.
+	bool pivas_script_hidden = pivasScriptWindowHidden();
+	bool pivas_reduced_hud_eligible =
+	    wndCtrl.usingDynamicTextWindow &&
+	    pivas_final_window_seen_live_dialogue &&
+	    !pivas_script_hidden &&
+	    ((display_mode & DISPLAY_MODE_TEXT) ||
+	     page_enter_status != 0 ||
+	     dlgCtrl.dialogueProcessingState.active ||
+	     dlgCtrl.dialogueIsRendering ||
+	     clickstr_state != CLICK_NONE ||
+	     textgosub_clickstr_state != CLICK_NONE);
+	if (pivas_reduced_hud_eligible)
+		pivas_final_window_hold_until = SDL_GetTicks() + 250;
+	if (pivasGapGateHolds()) {
+		camera.has_moved = false;
+		return;
+	}
+#endif
+	if (!(skip_mode & SKIP_SUPERSKIP)) {
+		GPU_Rect combined_camera = camera.center_pos;
+		combined_camera.x -= camera.pos.x;
+		combined_camera.y -= camera.pos.y;
+
+		GPU_bool old_scene_blending = accumulation_gpu->use_blending;
+		GPU_BlendMode old_scene_blend_mode = accumulation_gpu->blend_mode;
+
+		GPU_SetBlending(accumulation_gpu, false);
+		gpu.copyGPUImage(accumulation_gpu, &combined_camera, nullptr, screen_target);
+		accumulation_gpu->blend_mode = old_scene_blend_mode;
+		GPU_SetBlending(accumulation_gpu, old_scene_blending);
+
+#if PIVAS_DYNAMIC_WINDOW_FINAL_DIRECT_ART
+		// With FINAL_DIRECT_ART the textbox art is drawn only inside
+		// combineWithCamera, which this present path bypasses, so draw it
+		// here under the same persistence predicate. The seen_live guard
+		// matters because textgosub_clickstr_state never resets in play;
+		// without it the textbox would cover the boot disclaimer.
+		bool pivas_text_hud_live =
+		    (pivas_reduced_hud_eligible ||
+		     (wndCtrl.usingDynamicTextWindow &&
+		      pivas_final_window_seen_live_dialogue &&
+		      SDL_GetTicks() < pivas_final_window_hold_until)) &&
+		    !pivas_script_hidden;
+		if (pivas_text_hud_live)
+			renderDynamicTextWindow(screen_target, nullptr, refreshMode(), false);
+#endif
+
+		gpu.copyGPUImage(hud_gpu, &camera.center_pos, nullptr, screen_target);
+
+		if (needs_screenshot)
+			createScreenshot(accumulation_gpu, &combined_camera, hud_gpu, &camera.center_pos);
+	}
+
+	camera.has_moved = false;
+	screenChanged    = true;
+}
+
+void ONScripter::clearVitaReducedEffectDirtyRects(bool clear_dirty_flag) {
+	if (!clear_dirty_flag)
+		return;
+
+	if (pre_screen_render) {
+		before_dirty_rect_scene.clear();
+		before_dirty_rect_hud.clear();
+		dirty_rect_scene.clear();
+		dirty_rect_hud.clear();
+	} else {
+		before_dirty_rect_scene.clear();
+		before_dirty_rect_hud.clear();
+	}
+}
+
+bool ONScripter::runVitaReducedEffect(EffectLink *effect, bool clear_dirty_rect_when_done, int refresh_mode_src, int refresh_mode_dst) {
+	if (refresh_mode_src == -1)
+		refresh_mode_src = refreshMode() | REFRESH_BEFORESCENE_MODE;
+	if (refresh_mode_dst == -1)
+		refresh_mode_dst = refreshMode();
+
+	bool no_commit = (refresh_mode_src & REFRESH_BEFORESCENE_MODE) &&
+	                 (refresh_mode_dst & REFRESH_BEFORESCENE_MODE);
+
+	int dst_mode = (refresh_mode_dst & (REFRESH_SOMETHING | REFRESH_BEFORESCENE_MODE)) | CONSTANT_REFRESH_MODE;
+	// pivasScriptWindowHidden: the sticky click terms must not force
+	// WINDOW|TEXT back into the compose while the script has textoff'd and
+	// waits for input (menus re-print every loop iteration).
+	bool text_hud_should_persist =
+	    ((display_mode & DISPLAY_MODE_TEXT) ||
+	     page_enter_status != 0 ||
+	     dlgCtrl.dialogueProcessingState.active ||
+	     dlgCtrl.dialogueIsRendering ||
+	     clickstr_state != CLICK_NONE ||
+	     textgosub_clickstr_state != CLICK_NONE) &&
+	    !pivasScriptWindowHidden();
+	if (text_hud_should_persist &&
+	    (dst_mode & REFRESH_NORMAL_MODE) &&
+	    ((dst_mode & (REFRESH_WINDOW_MODE | REFRESH_TEXT_MODE)) !=
+	     (REFRESH_WINDOW_MODE | REFRESH_TEXT_MODE))) {
+#if PIVAS_RENDER_TRACE
+		sendToLog(LogLevel::Info,
+		          "PIVAS reduced preserving text HUD: dst_mode 0x%x -> 0x%x display=0x%x page_enter=%d click=%d textgosub_click=%d dlg_active=%d dlg_rendering=%d text_bits=0x%x\n",
+		          dst_mode,
+		          dst_mode | REFRESH_WINDOW_MODE | REFRESH_TEXT_MODE,
+		          display_mode,
+		          page_enter_status,
+		          clickstr_state,
+		          textgosub_clickstr_state,
+		          dlgCtrl.dialogueProcessingState.active ? 1 : 0,
+		          dlgCtrl.dialogueIsRendering ? 1 : 0,
+		          REFRESH_WINDOW_MODE | REFRESH_TEXT_MODE);
+#endif
+		dst_mode |= REFRESH_WINDOW_MODE | REFRESH_TEXT_MODE;
+		if (draw_cursor_flag || clickstr_state != CLICK_NONE || textgosub_clickstr_state != CLICK_NONE)
+			dst_mode |= REFRESH_CURSOR_MODE;
+	}
+	GPU_Rect full_rect = full_script_clip;
+
+#if PIVAS_RENDER_TRACE
+	sendToLog(LogLevel::Info,
+	          "PIVAS reduced effect=%d src=%d dst=%d no_commit=%d dirty_scene=%g,%g,%g,%g dirty_hud=%g,%g,%g,%g before_scene=%g,%g,%g,%g before_hud=%g,%g,%g,%g\n",
+	          effect->effect, refresh_mode_src, refresh_mode_dst, no_commit,
+	          dirty_rect_scene.bounding_box_script.x, dirty_rect_scene.bounding_box_script.y,
+	          dirty_rect_scene.bounding_box_script.w, dirty_rect_scene.bounding_box_script.h,
+	          dirty_rect_hud.bounding_box_script.x, dirty_rect_hud.bounding_box_script.y,
+	          dirty_rect_hud.bounding_box_script.w, dirty_rect_hud.bounding_box_script.h,
+	          before_dirty_rect_scene.bounding_box_script.x, before_dirty_rect_scene.bounding_box_script.y,
+	          before_dirty_rect_scene.bounding_box_script.w, before_dirty_rect_scene.bounding_box_script.h,
+	          before_dirty_rect_hud.bounding_box_script.x, before_dirty_rect_hud.bounding_box_script.y,
+	          before_dirty_rect_hud.bounding_box_script.w, before_dirty_rect_hud.bounding_box_script.h);
+#endif
+
+	/*
+	 * Compose the new scene/hud directly into the live layers: drawing in
+	 * place yields the previous contents with the new frame drawn over,
+	 * without scratch targets or extra full-canvas blits. Nothing samples
+	 * accumulation_gpu/hud_gpu while they are being refreshed
+	 * (presentVitaReducedEffectTargets only reads them afterwards).
+	 */
+	refreshSceneTo(accumulation_gpu->target, &full_rect, dst_mode);
+	refreshHudTo(hud_gpu->target, &full_rect, dst_mode);
+
+#if PIVAS_RENDER_TRACE
+	sendToLog(LogLevel::Info, "PIVAS reduced draws scene=%d hud=%d\n",
+	          vita_render_trace_scene_draw_count, vita_render_trace_hud_draw_count);
+#endif
+
+	if (!no_commit)
+		commitVisualState();
+
+	if (effect->effect > 1)
+		fillCanvas(false, true);
+
+	presentVitaReducedEffectTargets();
+	clearVitaReducedEffectDirtyRects(clear_dirty_rect_when_done);
+	return false;
+}
+#endif
+
+bool ONScripter::constantRefreshEffect(EffectLink *effect, bool clear_dirty_rect_when_done, bool async, int refresh_mode_src, int refresh_mode_dst) {
+
+	if (effect->effect == 0)
+		return true; // true: go home; no effect performed or scheduled (it failed)
+
+	if (effect->effect == 1 && (skip_mode & SKIP_SUPERSKIP)) {
+		if (!(refresh_mode_src & REFRESH_BEFORESCENE_MODE) || !(refresh_mode_dst & REFRESH_BEFORESCENE_MODE))
+			commitVisualState();
+		return false; // No need to bother
+	}
+
+#if defined(PIVAS) && PIVAS_INSTANT_REDUCE_MOTION_EFFECTS
+	if (reduce_motion) {
+		return runVitaReducedEffect(effect, clear_dirty_rect_when_done, refresh_mode_src, refresh_mode_dst);
+	}
+#endif
+
+	//sendToLog(LogLevel::Info, "constantRefreshEffect start\n");
+
+	bool setup_mask_effect = effect->effect == 15 || effect->effect == 18;
+#if defined(PIVAS) && PIVAS_INSTANT_REDUCE_MOTION_EFFECTS
+	if (reduce_motion)
+		setup_mask_effect = false;
+#endif
+	if (setup_mask_effect) {
+		if (!effect->anim.gpu_image) {
+			parseTaggedString(&effect->anim, true);
+			setupAnimationInfo(&effect->anim);
+			static int calls = 0;
+			calls++;
+			if (!effect->anim.gpu_image) {
+				sendToLog(LogLevel::Error, "constantRefreshEffect setupAnimationInfo failed on call %d\n", calls);
+			}
+		}
+	}
+
+	// Save into global state for performing during constant refresh.
+	effect_current          = effect;
+	effect_set              = false;
+	effect_rect_cleanup     = clear_dirty_rect_when_done;
+	effect_refresh_mode_src = refresh_mode_src;
+	effect_refresh_mode_dst = refresh_mode_dst;
+
+	if (!async) {
+		event_mode = IDLE_EVENT_MODE;
+		while (effect_current) {
+			waitEvent(0);
+		}
+	}
+
+	//sendToLog(LogLevel::Info, "constantRefreshEffect return\n");
+
+	return false; // false: effect complete or scheduled
+}
+
+bool ONScripter::setEffect() {
+	/*	sendToLog(LogLevel::Info, "setEffect. effect_no %i, dirty_rect_hud.bounding_box xywh: %i %i %i %i\n",
+			effect->effect,
+			dirty_rect_hud.bounding_box.x, dirty_rect_hud.bounding_box.y, dirty_rect_hud.bounding_box.w, dirty_rect_hud.bounding_box.h);
+	
+	sendToLog(LogLevel::Info, "setEffect. effect_no %i, dirty_rect_scene.bounding_box xywh: %i %i %i %i\n",
+			effect->effect,
+			dirty_rect_scene.bounding_box.x, dirty_rect_scene.bounding_box.y, dirty_rect_scene.bounding_box.w, dirty_rect_scene.bounding_box.h);
+*/
+
+	EffectLink *effect       = effect_current;
+	int refresh_mode_src     = effect_refresh_mode_src;
+	int refresh_mode_dst     = effect_refresh_mode_dst;
+
+	if (effect->effect == 0)
+		return true;
+
+	int effect_no = effect->effect;
+
+	if (refresh_mode_src == -1)
+		refresh_mode_src = refreshMode() | REFRESH_BEFORESCENE_MODE;
+	if (refresh_mode_dst == -1)
+		refresh_mode_dst = refreshMode();
+
+	if (effect_dst_gpu == nullptr) {
+		assert(hud_effect_dst_gpu == nullptr && combined_effect_dst_gpu == nullptr);
+		effect_dst_gpu = gpu.getCanvasImage();
+		hud_effect_dst_gpu = gpu.getCanvasImage();
+		combined_effect_dst_gpu = gpu.getScriptImage();
+	}
+
+	if (effect_no != 1 && pre_screen_gpu == nullptr)
+		pre_screen_gpu = gpu.getScriptImage();
+
+	//Copy old data to _dst in case we don't update the whole screen
+	gpu.copyGPUImageExact(accumulation_gpu, effect_dst_gpu->target);
+	gpu.copyGPUImageExact(hud_gpu, hud_effect_dst_gpu->target);
+
+	//All these commands may be called from CR and mergeForEffect calls refresh*To afterwards.
+	//If we don't provide CR_MODE we will never get proper combined_*gpu for refreshMode()
+	if (effect_no == 1) {
+		mergeForEffect(combined_effect_dst_gpu,
+		               &dirty_rect_scene.bounding_box_script,
+		               &dirty_rect_hud.bounding_box_script,
+		               refresh_mode_dst | CONSTANT_REFRESH_MODE);
+	} else {
+		// Allocate src images for transitional effects!
+		if (effect_src_gpu == nullptr) {
+			assert(hud_effect_src_gpu == nullptr && combined_effect_src_gpu == nullptr);
+			effect_src_gpu = gpu.getCanvasImage();
+			hud_effect_src_gpu = gpu.getCanvasImage();
+			combined_effect_src_gpu = gpu.getScriptImage();
+		}
+
+		gpu.copyGPUImageExact(accumulation_gpu, effect_src_gpu->target);
+		gpu.copyGPUImageExact(hud_gpu, hud_effect_src_gpu->target);
+		mergeForEffect(combined_effect_src_gpu, nullptr, nullptr, REFRESH_NONE_MODE);
+		mergeForEffect(combined_effect_dst_gpu, nullptr, nullptr, refresh_mode_dst | CONSTANT_REFRESH_MODE);
+	}
+
+	effect_counter       = 0;
+	effect_previous_time = SDL_GetTicks();
+	effect_duration      = effect->duration;
+	effect_first_time    = true;
+
+	if (keyState.ctrl || skip_mode & SKIP_NORMAL) {
+		// shorten the duration of effects while skipping
+		if (effect_cut_flag) {
+			effect_duration = 0;
+			return false; //don't parse effects if effectcut skip
+		}
+		if (effect_duration > 100) {
+			effect_duration = effect_duration / 10;
+		} else if (effect_duration > 10) {
+			effect_duration = 10;
+		} else {
+			effect_duration = 1;
+		}
+	} else if (effectspeed == EFFECTSPEED_INSTANT) {
+		effect_duration = 0;
+		return false; //don't parse effects if instant speed
+	} else if (effectspeed == EFFECTSPEED_QUICKER) {
+		effect_duration = effect_duration / 2;
+		if (effect_duration <= 0)
+			effect_duration = 1;
+	}
+
+	/* Load mask image */
+	if (effect_no == 15 || effect_no == 18) {
+		if (!effect->anim.gpu_image) {
+			sendToLog(LogLevel::Error, "We should have a gpu_image here built by constantRefreshEffect. This is madness...\n");
+		}
+	}
+	if (effect_no == 11 || effect_no == 12 || effect_no == 13 || effect_no == 14 ||
+	    effect_no == 16 || effect_no == 17) {
+		fillCanvas();
+	}
+
+	dll = params = nullptr;
+	if (effect_no == 99) { // dll-based
+		dll = effect->anim.image_name;
+		if (dll != nullptr) { //just in case no dll is given
+			if (debug_level > 0)
+				sendToLog(LogLevel::Info, "dll effect: Got dll/params '%s'\n", dll);
+
+			params = dll;
+			while (*params != 0 && *params != '/') params++;
+			if (*params == '/')
+				params++;
+			fillCanvas();
+		}
+	}
+	return false;
+}
+
+void ONScripter::mergeForEffect(GPU_Image *dst, GPU_Rect *scene_rect, GPU_Rect *hud_rect, int refresh_mode) {
+	if (dst != combined_effect_src_gpu && dst != combined_effect_dst_gpu)
+		throw std::runtime_error("unexpected GPU_Image used for merge");
+
+	GPU_Rect full_rect = full_script_clip;
+	if (!scene_rect)
+		scene_rect = &full_rect;
+	if (!hud_rect)
+		hud_rect = &full_rect;
+
+	//sendToLog(LogLevel::Info, "mergeForEffect with dst %d\n", dst==combined_effect_dst_gpu);
+
+	if (dst == combined_effect_src_gpu) {
+		combineWithCamera(effect_src_gpu, hud_effect_src_gpu, combined_effect_src_gpu->target, *scene_rect, *hud_rect, refresh_mode);
+	} else {
+		combineWithCamera(effect_dst_gpu, hud_effect_dst_gpu, combined_effect_dst_gpu->target, *scene_rect, *hud_rect, refresh_mode);
+	}
+}
+
+bool ONScripter::doEffect() {
+	EffectLink *effect   = effect_current;
+	int refresh_mode_src = effect_refresh_mode_src;
+	int refresh_mode_dst = effect_refresh_mode_dst;
+
+	if (refresh_mode_src == -1)
+		refresh_mode_src = refreshMode() | REFRESH_BEFORESCENE_MODE;
+	if (refresh_mode_dst == -1)
+		refresh_mode_dst = refreshMode();
+	bool no_commit = (refresh_mode_src & REFRESH_BEFORESCENE_MODE) &&
+	                 (refresh_mode_dst & REFRESH_BEFORESCENE_MODE);
+
+	int start_time       = SDL_GetTicks();
+	int timer_resolution = start_time - effect_previous_time;
+	effect_previous_time = start_time;
+
+	int effect_no = effect->effect;
+	if (effect_first_time) {
+		if ((effect_cut_flag && (keyState.ctrl || skip_mode & SKIP_NORMAL)) ||
+		    effectspeed == EFFECTSPEED_INSTANT)
+			effect_no = 1;
+	}
+
+	/* ---------------------------------------- */
+	/* Execute effect */
+	if (debug_level > 1 && effect_first_time)
+		sendToLog(LogLevel::Info, "Effect number %d, %d ms\n", effect_no, effect_duration);
+
+	bool not_implemented = false;
+	switch (effect_no) {
+		case 0: // Instant display
+		case 1: // Instant display
+			break;
+
+		default:
+			//not_implemented = true;
+			if (effect_first_time) {
+				std::snprintf(script_h.errbuf, MAX_ERRBUF_LEN,
+				              "effect No. %d not implemented; substituting crossfade",
+				              effect_no);
+				errorAndCont(script_h.errbuf);
+			}
+			/* fall through */
+
+		case 10: // Cross fade
+			effectBlendToCombinedImage(nullptr, ALPHA_BLEND_CONST, 256 * effect_counter / effect_duration, pre_screen_gpu);
+			break;
+
+		case 15: // Fade with mask
+			effectBlendToCombinedImage(effect->anim.gpu_image, ALPHA_BLEND_FADE_MASK, 256 * effect_counter / effect_duration, pre_screen_gpu);
+			break;
+
+		case 18: // Cross fade with mask
+			effectBlendToCombinedImage(effect->anim.gpu_image, ALPHA_BLEND_CROSSFADE_MASK, 256 * effect_counter * 2 / effect_duration, pre_screen_gpu);
+			break;
+
+		case 99: // dll-based
+			if (dll != nullptr) {
+				if (!std::strncmp(dll, "whirl.dll", std::strlen("whirl.dll"))) {
+					effectWhirl(params, effect_duration);
+				} else if (!std::strncmp(dll, "trvswave.dll", std::strlen("trvswave.dll"))) {
+					effectTrvswave(params, effect_duration);
+				} else if (!std::strncmp(dll, "breakup.dll", std::strlen("breakup.dll"))) {
+					effectBreakupParser(params, refresh_mode_src, refresh_mode_dst);
+				} else if (!std::strncmp(dll, "glass.dll", std::strlen("glass.dll"))) {
+					if (new_glass_smash_implementation)
+						effectBrokenGlassParser(params, refresh_mode_src, refresh_mode_dst);
+					else
+						effectTrvswave(params, effect_duration);
+				} else {
+					not_implemented = true;
+					if (effect_first_time) {
+						std::snprintf(script_h.errbuf, MAX_ERRBUF_LEN,
+						              "dll effect '%s' (%d) not implemented; substituting crossfade",
+						              dll, effect_no);
+						errorAndCont(script_h.errbuf);
+					}
+				}
+			} else { //just in case no dll is given
+				not_implemented = true;
+				if (effect_first_time) {
+					std::snprintf(script_h.errbuf, MAX_ERRBUF_LEN,
+					              "no dll provided for effect %d; substituting crossfade",
+					              effect_no);
+					errorAndCont(script_h.errbuf);
+				}
+			}
+			if (not_implemented) {
+				// do crossfade
+				effectBlendGPU(nullptr, ALPHA_BLEND_CONST, 256 * effect_counter / effect_duration, &dirty_rect_scene.bounding_box_script);
+			}
+			break;
+	}
+
+	if (debug_level > 1)
+		sendToLog(LogLevel::Info, "\teffect count %d / dur %d\n", effect_counter, effect_duration);
+
+	effect_counter += timer_resolution;
+	effect_first_time = false;
+
+	if (effect_counter < effect_duration && effect_no != 1) {
+		if (effectskip_flag && skip_effect && skip_enabled) {
+			effect_counter = effect_duration;
+		}
+		return true;
+	}
+
+	// last call
+	gpu.copyGPUImageExact(effect_dst_gpu, accumulation_gpu->target);
+	gpu.clearWholeTarget(hud_gpu->target);
+	gpu.copyGPUImageExact(hud_effect_dst_gpu, hud_gpu->target);
+
+	if (!no_commit)
+		commitVisualState();
+
+	pre_screen_render = false;
+	if (pre_screen_gpu) {
+		gpu.giveScriptImage(pre_screen_gpu);
+		pre_screen_gpu = nullptr;
+	}
+
+	if (effect_no > 1)
+		fillCanvas(false, true); //formerly true, false (creates #110)
+
+	// free upon next effect
+	gpu.giveCanvasImage(effect_dst_gpu);
+	gpu.giveCanvasImage(hud_effect_dst_gpu);
+	gpu.giveScriptImage(combined_effect_dst_gpu);
+	effect_dst_gpu = nullptr;
+	hud_effect_dst_gpu = nullptr;
+	combined_effect_dst_gpu = nullptr;
+
+	if (effect_src_gpu != nullptr && hud_effect_src_gpu != nullptr && combined_effect_src_gpu != nullptr) {
+		gpu.giveCanvasImage(effect_src_gpu);
+		gpu.giveCanvasImage(hud_effect_src_gpu);
+		gpu.giveScriptImage(combined_effect_src_gpu);
+		effect_src_gpu = nullptr;
+		hud_effect_src_gpu = nullptr;
+		combined_effect_src_gpu = nullptr;
+	}
+
+	if (effect_no == 1)
+		effect_counter = 0;
+	else if (effect_no == 99 && dll != nullptr)
+		dll = params = nullptr;
+
+	return false;
+}
+
+void ONScripter::sendToPreScreen(bool refreshSrc, std::function<PooledGPUImage(GPUTransformableCanvasImage &)> applyTransform, int refresh_mode_src, int refresh_mode_dst) {
+	if (refreshSrc || camera.has_moved || !before_dirty_rect_scene.isEmpty() || !before_dirty_rect_hud.isEmpty()) {
+		int rm = refresh_mode_src | CONSTANT_REFRESH_MODE;
+		combineWithCamera(effect_src_gpu, hud_effect_src_gpu, combined_effect_src_gpu->target,
+		                  before_dirty_rect_scene.bounding_box_script, before_dirty_rect_hud.bounding_box_script, rm);
+	}
+
+	if (!refreshSrc || camera.has_moved || !dirty_rect_scene.isEmpty() || !dirty_rect_hud.isEmpty()) {
+		int rm = refresh_mode_dst | CONSTANT_REFRESH_MODE;
+		combineWithCamera(effect_dst_gpu, hud_effect_dst_gpu, combined_effect_dst_gpu->target,
+		                  dirty_rect_scene.bounding_box_script, dirty_rect_hud.bounding_box_script, rm);
+	}
+
+	GPU_Image *lower = refreshSrc ? combined_effect_dst_gpu : combined_effect_src_gpu;
+	GPU_Image *upper = refreshSrc ? combined_effect_src_gpu : combined_effect_dst_gpu;
+
+	GPUTransformableCanvasImage transform(upper);
+	PooledGPUImage result = applyTransform(transform);
+
+	gpu.clearWholeTarget(upper->target);
+	GPU_SetBlending(upper, false);
+	gpu.copyGPUImage(result.image, nullptr, nullptr, upper->target);
+	GPU_SetBlending(upper, true);
+
+	pre_screen_render = true;
+	if (pre_screen_gpu == nullptr)
+		pre_screen_gpu = gpu.getScriptImage();
+
+	GPU_SetBlending(lower, false);
+	gpu.copyGPUImage(lower, nullptr, nullptr, pre_screen_gpu->target); //unchanged surface first
+	GPU_SetBlending(lower, true);
+	gpu.copyGPUImage(upper, nullptr, nullptr, pre_screen_gpu->target); //then the changed one
+}
+
+void ONScripter::effectBreakupParser(const char *params, int refresh_mode_src, int refresh_mode_dst) {
+	bool refreshSrc  = params[2] != 'p' && params[2] != 'P';
+	int breakupValue = refreshSrc ? 1000 * effect_counter / effect_duration : 1000 - (1000 * effect_counter / effect_duration);
+
+	sendToPreScreen(refreshSrc, [breakupValue, params](GPUTransformableCanvasImage &transform) {
+		return gpu.getBrokenUpImage(transform, {{BreakupType::GLOBAL, 0}}, breakupValue,
+		                            BREAKUP_MODE_LEFT, params);
+	},
+	                refresh_mode_src, refresh_mode_dst);
+}
+
+void ONScripter::effectBrokenGlassParser(const char *params, int refresh_mode_src, int refresh_mode_dst) {
+	int smashFactor = 1000 * effect_counter / effect_duration;
+
+	// Reset per each effect
+	if (effect_first_time) {
+		glassSmashData.smashParameter = script_h.parseInt(&params);
+		if (glassSmashData.smashParameter == 0)
+			glassSmashData.smashParameter = GlassSmashData::DefaultParameter;
+
+		glassSmashData.initialised = false;
+	}
+
+	sendToPreScreen(true, [smashFactor](GPUTransformableCanvasImage &transform) {
+		return gpu.getGlassSmashedImage(transform, smashFactor);
+	},
+	                refresh_mode_src, refresh_mode_dst);
+}

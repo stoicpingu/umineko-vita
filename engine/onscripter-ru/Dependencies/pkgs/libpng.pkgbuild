@@ -1,0 +1,20 @@
+pkgname=libpng
+pkgver=1.6.37
+pkgrel=1
+depends=('zlib')
+sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/libpng-${pkgver}.tar.xz")
+hashes=('505e70834d35383537b6491e7ae8641f1a4bed1876dbfe361201fc80868d88ca')
+
+configopts=(
+    '--disable-dependency-tracking'
+    '--disable-shared'
+    '--enable-hardware-optimizations=yes'
+    "--libdir=$outdir/lib"
+    "--with-zlib-prefix=$outdir"
+)
+
+cppflags_mac_extra=(
+    "-I$outdir/include"
+)
+
+# vim: set syntax=sh:

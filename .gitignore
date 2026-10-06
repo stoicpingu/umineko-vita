@@ -1,0 +1,48 @@
+# --- build outputs ---------------------------------------------------------
+build/
+cmake-build-*/
+lib/libc_bridge/out/
+lib/vitaGL-src/libvitaGL.a
+lib/vitaGL-src/libvitaGL.a.*
+*.o
+*.obj
+*.a
+*.velf
+*.self
+eboot.bin
+*.vpk
+
+# --- game data: never in the repo (4.8 GB; distributed as the password-
+#     protected archive, see README) and the engine binary built from
+#     engine/onscripter-ru ------------------------------------------------
+assets/
+apk/
+
+# --- engine build tree and pristine comparison copy ------------------------
+engine/onscripter-ru/DerivedData/
+engine/onscripter-ru/coredump
+engine/onscripter-ru/Tools/nscdec/nscdec
+engine/onscripter-ru-debug-current/
+
+# --- device pulls, crash dumps, logs ---------------------------------------
+logs/
+coredump
+*.psp2dmp
+*.log
+parsed-core.txt
+pivas_trace*.txt
+pivas_load_timing*.txt
+
+# --- editors / OS / local tooling -----------------------------------------
+.DS_Store
+._*
+.idea/
+.vscode/
+.claude/
+
+# vitaGL upstream samples are not needed for the port
+lib/vitaGL-src/samples/
+
+# development log and design notes stay local
+state.md
+analysis/

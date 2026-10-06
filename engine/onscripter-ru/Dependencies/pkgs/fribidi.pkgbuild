@@ -1,0 +1,66 @@
+pkgname=fribidi
+pkgver=1.0.5
+pkgrel=1
+depends=('freetype')
+sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/fribidi-${pkgver}.tar.bz2")
+hashes=('6a64f2a687f5c4f203a46fa659f43dd43d1f8b845df8d723107e8a7e6158e4ce')
+
+configopts=(
+    '--disable-shared'
+    '--disable-debug'
+    '--with-glib=no'
+    "--libdir=$outdir/lib"
+)
+
+# Special version that uses bsdtar (which works with 32-bit uid_t)
+extract_sources() {
+    msg "Extracting sources"
+    pushd $srcdir &>/dev/null
+    
+    local tar_command='tar'
+    if [ "$(getHost)" == "win32" ]; then
+        tar_command='bsdtar'
+    fi
+    
+    local netfile
+    for netfile in "${sources[@]}"; do
+        local file=$(get_filename "$netfile")
+        if in_array "$file" "${noextract[@]}"; then
+            continue
+        fi
+        
+        local filetype=$(file -bzL --mime "$file")
+        local ext=${file##*.}
+        local cmd=''
+        local cmd_flags=''
+
+        case "$filetype" in
+            *application/x-tar*)
+                cmd="${tar_command} -xf";;
+            *application/x-zip*)
+                cmd='unzip';;
+            *)
+                # MinGW32 has broken mime types in 'file' command, fall back on the
+                # extension to work around
+                case "$ext" in
+                    bz2|gz|tar|xz)
+                        # should look one more level in, to see if tar is there...
+                        cmd="${tar_command} -xf";;
+                    *)
+                        continue;;
+                esac;;
+        esac
+
+        local ret=0
+        msg2 "Extracting %s with %s" "$file" "$cmd"
+        $cmd "$file" || ret=$?
+
+        if (( ret )); then
+            error_out "Failed to extract %s" "$file"
+        fi
+    done
+
+    popd &>/dev/null
+}
+
+# vim: set syntax=sh:

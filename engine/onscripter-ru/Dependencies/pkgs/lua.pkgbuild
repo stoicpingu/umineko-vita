@@ -1,0 +1,51 @@
+pkgname=lua
+pkgver=5.3.5
+pkgrel=1
+sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/lua-$pkgver.tar.gz")
+hashes=('0c2eed3f960446e1a3e4b9a1ca2f3ff893b6ce41942cf54d5dd59ab4b3b058ac')
+
+build() {
+    msg "Compiling %s" "$pkgname"
+
+    pushd "$pkgname-$pkgver" &>/dev/null
+
+    local ret=0
+    local logfile="$logdir/$pkgname.compile.log"
+    
+    lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
+    lldf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
+    
+    case $(getTarget) in
+        win32)
+            make $MAKEOPTS mingw CXX="$(getCXX)" CC="$(getCC)" MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
+        ;;
+        darwin*)
+            make $MAKEOPTS macosx CXX="$(getCXX)" CC="$(getCC)" MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
+        ;;
+        linux-like)
+            make $MAKEOPTS linux MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
+        ;;
+    esac
+        
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+    
+    msg "Installing"
+      
+    cp "src/liblua.a" "$outdir/lib/liblua.a"
+    cp "src/lua.h" "$outdir/include/lua.h"
+    cp "src/luaconf.h" "$outdir/include/luaconf.h"
+    cp "src/lualib.h" "$outdir/include/lualib.h"
+    cp "src/lauxlib.h" "$outdir/include/lauxlib.h"
+    cp "src/lua.hpp" "$outdir/include/lua.hpp"
+    
+    msg "Finishing %s" "$pkgname"
+    
+    postbuild
+}
+
+# vim: set syntax=sh:
