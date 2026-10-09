@@ -15,50 +15,45 @@ Umineko no Naku Koro ni · PSVita Port
 
 > Umineko no Naku Koro ni is a visual novel by 07th Expansion. October 4th, 1986: the Ushiromiya family gathers on the private island of Rokkenjima for the annual family conference, as a typhoon closes in and the legend of the Golden Witch, Beatrice, starts to come true.
 
-This repository contains a PS Vita port of the **[Umineko Project](https://www.umineko-project.org/)** release of the game — the fan port of the PS3 version ("Umineko no Naku Koro ni Rondo of the Witch and Reasoning" / "Nocturne of Truth and Illusions", with the PS3 art, full voice acting and videos) that runs on their open-source **ONScripter-RU** engine.
+This repository contains a PS Vita port of the **[Umineko Project](https://www.umineko-project.org/)** release of the game — the fan port of the PS3 version ("Umineko no Naku Koro ni Rondo of the Witch and Reasoning" / "Nocturne of Truth and Illusions", featuring PS3 artwork, full voice acting, and videos) running on an optimized build of the **ONScripter-RU** engine that allows the game to run smoothly on the PS Vita.
 
-How it works: the engine is built as an Android ARMv7 library and run on the Vita through the
-[Android SO Loader by TheFloW](https://github.com/TheOfficialFloW/gtasa_vita)
-and the [soloader-boilerplate](https://github.com/v-atamanenko/soloader-boilerplate), with graphics going through
-[vitaGL](https://github.com/Rinnegatamante/vitaGL). ONScripter-RU itself was **heavily modified and optimized
-for the Vita** (source in [`engine/onscripter-ru`](engine/onscripter-ru)): hardware video decoding through
-the Vita's own decoder, a rewritten textbox/HUD presentation path, memory and loading-time work, all the
-assets re-encoded for the Vita's screen and memory, and a lot of smaller fixes.
+The engine has been **heavily modified and optimized for the PS Vita**: hardware video decoding through the Vita's native media framework, a rewritten textbox and HUD presentation pipeline, memory allocation and loading-time optimizations, and assets tailored specifically for the Vita's display and hardware limits.
 
-> **About this release.** The porting work was done by AI models, supervised and tested by a human. Parts
-> of every chapter, the menus, saving/loading and the videos were played on hardware, but **the full game
-> has not been play-tested from start to finish**. If you run into a problem — a crash, a stuck scene, a
-> wrong effect — please [open an issue](https://github.com/stoicpingu/umineko-vita/issues) and say where in
-> the story it happened.
+> **About Version 1.1:** 
+> Version 1.1 adds multi-language support (**English**, **Japanese**, **Brazilian Portuguese**, and **Spanish**), performance improvements, and bug fixes.
 >
-> **Version 1.0 is English only.** Other translations may come in an update.
+> The porting work was executed with AI assistance and supervised and tested on real hardware by a human. Parts of every chapter, menus, saving/loading, and videos have been verified on hardware, but **the full game has not been play-tested from start to finish**. If you encounter an issue (a crash, stuck scene, or graphical glitch), please [open an issue](https://github.com/stoicpingu/umineko-vita/issues) detailing where in the story it occurred.
 
 A short legal note appears in the [Disclaimer](#disclaimer) section near the bottom of this page — please read it before downloading anything.
 
+---
+
 ## Setup Instructions (For End Users)
 
-In order to properly install the game, you'll have to follow these steps precisely:
+In order to properly install the game, follow these steps:
 
-- Install [kubridge](https://github.com/bythos14/kubridge/releases/) by copying `kubridge.skprx` to your taiHEN plugins folder (usually `ur0:tai`) and adding it to your `config.txt` under `*KERNEL`:
-
-```
-  *KERNEL
-  ur0:tai/kubridge.skprx
-```
-
-- Make sure you have `libshacccg.suprx` in the `ur0:/data/` folder on your console. If you don't, follow [this guide](https://samilops2.gitbook.io/vita-troubleshooting-guide/shader-compiler/extract-libshacccg.suprx) to extract it.
-- <u>Legally</u> own the game. The Umineko Project's [copyright message](https://www.umineko-project.org/en/copyright-message/) allows the use of their port only to people who own **the PC release of Umineko no Naku Koro ni** and **the PS3 release of Umineko no Naku Koro ni Rondo**, and asks everyone to support the people who made the game by buying them. This port follows the same rule.
-- Download the game data archive [`umineko-vita-release.zip`](https://drive.google.com/file/d/1onPuW4rIEvKBaPn4ZX_vYy0WexlTkG01/view?usp=sharing) (about 4.8 GB). **You need this archive, not the Umineko Project's PC download**: the assets in it were resized and re-encoded for the Vita's screen, memory and hardware video decoder, and the configuration files were made specifically for this port — the PC files will not work with it. The archive is **password protected** with the Umineko Project's own passphrase, exactly like their releases: owners of the games can build it from their manual and game files as described in the [copyright message](https://www.umineko-project.org/en/copyright-message/) (just google things ;)). The password is not published here.
-- Extract the archive. It contains a single folder, `umineko`. Copy that folder to `ux0:data/` on your Vita, so that you end up with `ux0:data/umineko/`. It is about **5 GB** in ~100,000 files, so expect the copy to take a while (use a USB/SD2Vita connection rather than FTP if you can).
-- Install `umineko.vpk` (from [Releases](https://github.com/stoicpingu/umineko-vita/releases/latest)).
+1. **Install kubridge**: Download [kubridge](https://github.com/bythos14/kubridge/releases/) and copy `kubridge.skprx` to your taiHEN plugins folder (usually `ur0:tai/`). Add it to your `ur0:tai/config.txt` under `*KERNEL`:
+   ```text
+   *KERNEL
+   ur0:tai/kubridge.skprx
+   ```
+2. **Extract Shader Compiler**: Ensure `libshacccg.suprx` is present in `ur0:/data/`. If missing, follow [this guide](https://samilops2.gitbook.io/vita-troubleshooting-guide/shader-compiler/extract-libshacccg.suprx) to extract it.
+3. **Game Ownership**: Ensure you legally own the required original games per the [Umineko Project copyright message](https://www.umineko-project.org/en/copyright-message/).
+4. **Download & Extract Base Game Data**: Download the main game data archive [`umineko-vita-release.zip`](https://drive.google.com/file/d/1onPuW4rIEvKBaPn4ZX_vYy0WexlTkG01/view?usp=sharing) (~4.8 GB). **You need this archive, not the Umineko Project's PC download**: the assets in it were resized and re-encoded for the Vita's screen, memory and hardware video decoder, and the configuration files were made specifically for this port — the PC files will not work with it. The archive is **password protected** with the Umineko Project's own passphrase, exactly like their releases: owners of the games can build it from their manual and game files as described in the [copyright message](https://www.umineko-project.org/en/copyright-message/) (just google things ;)). The password is not published here. Extract the archive to obtain the `umineko` folder, and copy it to `ux0:data/` on your Vita so that the path is `ux0:data/umineko/`.
+5. **Install English Hotfix**: Download and install the [English Hotfix](https://drive.google.com/file/d/19PtCyNjt13L0ylhAWaDcPSOH68gW9ojE/view?usp=drive_link). Extract and copy its contents into `ux0:data/umineko/`, overwriting existing files when prompted.
+6. **(Optional) Install Language Addons**:
+   - Language addons are available for **[Japanese (JP)](https://drive.google.com/file/d/11_y92UMVBXb-yFNN5KaO3Up25Jr22q1A/view?usp=drive_link)**, **[Brazilian Portuguese (PT-BR)](https://drive.google.com/file/d/1iQNFmuhpnWUwzsGJfr58sutvoaR72x6j/view?usp=drive_link)**, and **[Spanish (ES)](https://drive.google.com/file/d/1jTuhnCQhlD7dvvk1W61MRKE-_u6mvDdK/view?usp=drive_link)**.
+   - All language addons install identically: extract the zip and copy the `umineko` folder directly to `ux0:data/`, overwriting any existing files when prompted.
+   - > ⚠️ **Save File Compatibility Note:** Each language runs its own dedicated script file (`en.file`, `jp.file`, `pt.file`, `es.file`) and maintains separate save states. Story progress saved in English cannot be loaded when playing in Japanese or another language, and vice-versa.
+7. **Install VPK**: Download and install `umineko.vpk` from the [Releases](https://github.com/stoicpingu/umineko-vita/releases/latest) page.
 
 The final layout under `ux0:data/umineko/` should look like this:
 
-```
+```text
 ux0:data/umineko/
 ├── libmain.so          (the game engine)
-├── en.file             (the script)
-├── ons.cfg             (options, see Customization)
+├── en.file             (English script; jp.file, pt.file, or es.file for other languages)
+├── ons.cfg             (configuration settings, see Customization)
 ├── default.cfg
 ├── game.hash
 ├── render_scale.txt
@@ -69,150 +64,103 @@ ux0:data/umineko/
 ├── sound/
 ├── sprites/
 ├── video/
-└── save/               (your saves; ships with a clean save and pre-rendered caches)
+└── save/               (save files and pre-rendered caches)
 ```
 
-Don't rename or move anything inside the folder — the game checks its files against `game.hash` on launch.
+Do not rename or move files inside `ux0:data/umineko/` — the game validates its file integrity against `game.hash` on startup.
 
-The first launch is a little slower than the following ones (the game builds its caches); after that the
-title screen is reached in a few seconds.
+---
 
-Controls
------------------
+## Controls
 
-|            Button             | Action                                                                                      |
-|:-----------------------------:|:--------------------------------------------------------------------------------------------|
-|           ![cross]            | Advance text / confirm / skip an effect                                                     |
-|           ![circl]            | Open the Save screen while reading; back / close in menus, the backlog and the hidden textbox |
-|           ![trian]            | Hide / show the text window; back / close in menus                                           |
-|           ![squar]            | Auto mode on (any input turns it off)                                                        |
-|           ![start]            | Open / close the system and save menu                                                        |
-|           ![selec]            | Mute toggle (voices included)                                                                |
-|           ![trigl]            | Open the backlog / page up; previous page in Bookmarks                                       |
-|           ![trigr]            | Skip mode toggle; next page in Bookmarks                                                     |
-| ![dpadh] / ![dpadv] / ![joysl] | Menu and choice navigation (with auto-repeat); Right advances text; Up/Down pick a slot and Left/Right change page in Bookmarks |
-|           ![joysr]            | Up/Down: page the backlog back / forward while it is open                                   |
+| Button | Action |
+|:---:|:---|
+| ![cross] | Advance text / confirm / skip effect |
+| ![circl] | Open Save screen during reading; back / close in menus and backlog |
+| ![trian] | Toggle text window visibility; back / close in menus |
+| ![squar] | Toggle Auto mode (any button turns it off) |
+| ![start] | Open / close System & Save menu |
+| ![selec] | Toggle Mute |
+| ![trigl] | Open Backlog / Page up |
+| ![trigr] | Toggle Skip mode / Page down |
+| ![dpadh] / ![dpadv] / ![joysl] | Menu & choice navigation; Right advances text |
+| ![joysr] | Scroll Backlog up / down |
 
-Touch is supported too: **1 tap** = advance, **2-finger tap** = menu, **2-finger drag** = scroll the backlog,
-**3-finger swipes** = skip / auto / hide textbox / mute.
+**Touch Controls:** Touch controls are also supported for advancing text, menu selection, toggling menus, and scrolling through the backlog.
 
-A button pressed while a line is still appearing (Start, Circle, Triangle, L) is remembered and applied when
-the line reaches its click wait, so you never have to press twice.
+---
 
 ## Customization
 
-Most things are set from the game's own **Config** screen (open the menu with ![start]): volumes, per-character
-voices, text speed, auto-mode speed, textbox style and so on. Those settings are saved in `ux0:data/umineko/save/`.
+In-game settings (volumes, per-character voice toggles, text speed, auto-mode speed, and textbox styling) can be configured directly from the game's **Config** menu (![start]).
 
-A couple of options live in a text file instead, `ux0:data/umineko/ons.cfg`. Edit it with any text editor
-(one option per line) and restart the game. **These two lines are the only ones meant to be changed:**
+Additional engine behavior can be customized by editing `ux0:data/umineko/ons.cfg` with any plain text editor:
 
-| Line | What it does |
+| Configuration Flag | Description |
 |---|---|
-| `font-multiplier=b1:1.15,b5:1.15` | Dialogue text size. `1.15` = 15 % larger than the original PS3 size (the default of this port, chosen for the Vita's screen). Keep both numbers equal; `1.0` is the original size, anything up to about `1.3` still fits the textbox (it grows upward when needed). Changing it makes the **next** start slower once, while the game re-renders a few cached images with the new size. |
-| `env[loadlog]=false` | Fast loading (about 7 s): after loading a save the message log starts empty and fills as you read. Set it to `true` for the game's original behaviour — the whole episode's log is rebuilt on every load, which takes about 20 s extra on the Vita, but the backlog's "jump to this line" works. |
+| `font-multiplier=b1:1.15,b5:1.15` | Dialogue text scaling. `1.15` scales text 15% larger than original PS3 size for improved readability on the Vita display. Keep both values identical (`1.0` is original size). |
+| `env[loadlog]=false` | Fast loading mode (~7s load times). Set to `true` to rebuild the full backlog on save load (~20s extra per load). |
+| `env[legacy_op]=true` | Enables the legacy PS3 opening video. |
 
-```diff
-! ⚠️ Please don't touch the other lines of ons.cfg, nor default.cfg, game.hash or render_scale.txt.
-! They tie the engine to the Vita-specific assets and memory limits; changing them will break the game.
-```
+---
 
 ## Known Issues
 
-- **Not fully play-tested.** Parts of every chapter, the menus, saving/loading and the videos were played
-  on the Vita, but not the whole game from start to finish. Please report anything odd in the
-  [issues](https://github.com/stoicpingu/umineko-vita/issues).
-- **Reduced motion.** A few of the heaviest screen effects run in a simplified form to fit the Vita's memory.
-- **Russian and other languages**: not in 1.0.
+- **Not fully play-tested:** Parts of every chapter, menus, saves, and videos have been verified on Vita hardware, but the full game has not been played end-to-end. Please report any anomalies on the [Issues](https://github.com/stoicpingu/umineko-vita/issues) tracker.
+
+---
 
 ## Build Instructions (For Developers)
 
-The port has two halves: the **loader** (this repository, C, built with vitasdk) and the **engine**
-(`engine/onscripter-ru`, ONScripter-RU built as an Android ARMv7 shared library with the NDK toolchain in
-`engine/onscripter-ru/DerivedData/ndk`).
+### Prerequisites
 
-For the loader you'll need a [vitasdk](https://github.com/vitasdk) build fully compiled with softfp usage.
-You can find a precompiled version [here](https://github.com/vitasdk/buildscripts/releases).
+To compile the loader and native components, you will need:
+- A [vitasdk](https://github.com/vitasdk) toolchain compiled for `softfp` ABI.
+- [vitaShaRK](https://github.com/Rinnegatamante/vitaShaRK) (`make install`).
+- [kubridge](https://github.com/bythos14/kubridge) (`cmake -B build && make -C build install`).
+- [vitaGL](https://github.com/Rinnegatamante/vitaGL) built with:
+  ```bash
+  make SOFTFP_ABI=1 CIRCULAR_VERTEX_POOL=2 HAVE_GLSL_SUPPORT=1
+  ```
 
-Additionally, you'll need these libraries built and installed from source:
-
-- [vitaShaRK](https://github.com/Rinnegatamante/vitaShaRK)
-
-  - ```bash
-    make install
-    ```
-
-- [kubridge](https://github.com/bythos14/kubridge)
-
-  - ```bash
-    mkdir build && cd build
-    cmake .. && make install
-    ```
-
-- [vitaGL](https://github.com/Rinnegatamante/vitaGL) — the port links a vendored copy with small patches
-  (`lib/vitaGL-src`, render-target eviction and a scene-reset fix). Build it with:
-
-  - ```bash
-    make SOFTFP_ABI=1 CIRCULAR_VERTEX_POOL=2 HAVE_GLSL_SUPPORT=1
-    ```
-
-After all these requirements are met, you can compile the loader with the following commands:
+### Building the Loader & VPK
 
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
 
-This produces `build/eboot.bin` and `build/umineko.vpk`. The engine is rebuilt with
-`cd engine/onscripter-ru && make -j8`, and the result (`DerivedData/Droid-arm/onscripter-ru`) is shipped as
-`ux0:data/umineko/libmain.so` — after a loader change send `eboot.bin` to `ux0:app/UMNK00001/`, after an
-engine change send `libmain.so`; a change to the loader's exports needs both. The game assets are produced
-from the Umineko Project's files by `extras/scripts/build_vita_assets.py` (resizes, re-encodes the videos
-for the Vita's decoder, regenerates `game.hash`).
+This generates `build/eboot.bin` and `build/umineko.vpk`.
 
-The CMakeLists also exposes a few convenience targets (set `PSVITAIP` to your Vita's IP):
-
-```bash
-cmake --build build --target send # Upload eboot.bin and relaunch (requires vitacompanion)
-cmake --build build --target dump # Fetch the latest coredump and parse it through vita-parse-core
-```
-
-Engine addresses in a crash dump can be symbolicated with the NDK's `addr2line` on `libmain.so`; the engine is
-loaded at `0x98000000`, so subtract that from the crashing address first.
+---
 
 ## Credits
-- [Umineko Project](https://www.umineko-project.org/) for the PS3-fication port and the ONScripter-RU engine this port is built on, and for making it open source.
-- [07th Expansion](https://07th-expansion.net/) / Ryukishi07 for Umineko no Naku Koro ni, and Alchemist for the PS3 version.
-- [Andy "The FloW" Nguyen](https://github.com/TheOfficialFloW/) for the original .so loader.
-- [Rinnegatamante](https://github.com/Rinnegatamante/) for vitaGL, vitaShaRK and the reference ports whose video playback code showed the way.
-- [Volodymyr Atamanenko](https://github.com/v-atamanenko/) for [soloader-boilerplate](https://github.com/v-atamanenko/soloader-boilerplate), the starter kit this port is built on top of.
-- [bythos14](https://github.com/bythos14/) for kubridge.
-- [Spazzery](https://gbatemp.net/members/spazzery.495271/), for the motivation to finish the port and release it.
-- Everybody on the Vita community on Reddit and Discord who keeps the Vita homebrew scene alive.
+
+- **[Umineko Project](https://www.umineko-project.org/)** — For the PS3-fication port, engine base, and asset pipeline.
+- **[07th Expansion](https://07th-expansion.net/) / Ryukishi07** — For *Umineko no Naku Koro ni*, and Alchemist for the PS3 release.
+- **Translation Teams & Authors**:
+  - **English**: [Umineko Project](https://www.umineko-project.org/)
+  - **Japanese**: AuroraWright ([JP Patch 1.3](https://github.com/AuroraWright/))
+  - **Brazilian Portuguese**: [Knox Translations](https://knox.fansub.com.br/)
+  - **Spanish**: [Universo When They Cry](https://universowtc.github.io/)
+- **[Rinnegatamante](https://github.com/Rinnegatamante/)** — For vitaGL, vitaShaRK.
+- **[bythos14](https://github.com/bythos14/)** — For kubridge.
+- **[Spazzery](https://gbatemp.net/members/spazzery.495271/)** — For suggestions and motivation.
+- **PS Vita Community** — Everyone on Reddit and Discord keeping Vita development active.
+
+---
 
 ## Disclaimer
 
-Umineko no Naku Koro ni is copyright © 07th Expansion. The PlayStation 3 version was developed and published
-by Alchemist. *Umineko no Naku Koro ni*, its logo, characters, music, voices, artwork and all other
-trademarks and copyrighted material are the property of their respective owners.
+*Umineko no Naku Koro ni* is copyright © 07th Expansion. The PlayStation 3 version was developed and published by Alchemist. *Umineko no Naku Koro ni*, its logo, characters, music, voices, artwork, and all related trademarks are property of their respective owners.
 
-The work presented in this repository is not "official" or produced or sanctioned by the owner(s) of the
-aforementioned trademark(s), nor by the Umineko Project, nor by any other registered trademark mentioned in
-this repository.
+This repository contains only source code for the Vita port and engine modifications. Game assets are distributed separately in compliance with the [Umineko Project copyright terms](https://www.umineko-project.org/en/copyright-message/): for private, non-commercial use by individuals who own the original games.
 
-This repository contains only the port's source code: the loader and the modified ONScripter-RU engine
-(whose own license requires the modifications to be published, which they are here). The game data is
-distributed separately as an archive protected with the Umineko Project's passphrase, under the terms of
-their [copyright message](https://www.umineko-project.org/en/copyright-message/): private, non-commercial use,
-outside Japan only, and only by people who own the games listed there. Please read that page — it is the
-Umineko Project's work and their conditions apply to this port as well. The authors of this work do not
-promote or condone piracy in any way.
+---
 
 ## License
-The loader may be modified and distributed under the terms of the MIT license — see the [LICENSE](LICENSE)
-file. The engine in `engine/onscripter-ru` is ONScripter-RU, distributed under the GNU GPL v2 (with the
-BSD 3-Clause option for the parts owned by the Umineko Project) — see
-[engine/onscripter-ru/LICENSE](engine/onscripter-ru/LICENSE).
+
+The port loader is licensed under the MIT License — see [LICENSE](LICENSE). The engine modifications to ONScripter-RU are distributed under GNU GPL v2 / BSD 3-Clause — see [licenses/](licenses/).
 
 [cross]: https://raw.githubusercontent.com/v-atamanenko/sdl2sand/master/img/cross.svg "Cross"
 [circl]: https://raw.githubusercontent.com/v-atamanenko/sdl2sand/master/img/circle.svg "Circle"

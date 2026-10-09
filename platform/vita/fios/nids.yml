@@ -1,0 +1,14 @@
+modules:
+  OnsSonyStdio:
+    nid: 0x43FBA801
+    libraries:
+      SceLibc:
+        kernel: false
+        nid: 0xBE43BB07
+        functions:
+          onsSonyFopen: 0xFFFBE239
+          onsSonyFclose: 0xEC97321C
+          onsSonyFread: 0xB31C73A9
+          onsSonyFseek: 0xC3A7CDE1
+          onsSonyFtell: 0x41C2AF95
+          onsSonyFerror: 0xB724BFC1

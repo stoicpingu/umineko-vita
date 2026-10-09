@@ -16,8 +16,12 @@ import struct
 import subprocess
 import sys
 import time
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+from native_asset_metadata import collect_dimensions, png_size, write_dimensions
 
 VITA_MAX_TEX = 2048
 SKIP_DIRS = {"save", "onscripter-ru-osx.app"}
@@ -68,8 +72,8 @@ def classify(rel: Path, ext: str, png_meta):
         w = png_meta.get("width", 0) if png_meta else 0
         h = png_meta.get("height", 0) if png_meta else 0
         if h > VITA_MAX_TEX or w > VITA_MAX_TEX:
-            if p.startswith("graphics/locale/") or p.startswith("graphics/locale_en/"):
-                return "long_strip_placeholder"
+            if re.match(r"graphics/locale(?:_[^/]+)?/", p):
+                return "long_strip"
             if p.startswith("backgrounds/"):
                 return "background"
             if p.startswith("graphics/cg/"):
@@ -168,8 +172,14 @@ def alpha_safe_scale(scale_expr_w: str, scale_expr_h: str, alpha: bool) -> str:
 def build_png_command(src: Path, dst: Path, kind: str, meta, scale: str):
     alpha = meta.get("has_alpha", False) or kind == "sprite"
     fmt = "rgba" if alpha else "rgb24"
-    if kind == "long_strip_placeholder":
-        vf = "scale=1280:-2:flags=lanczos,crop=1280:720:0:0,setsar=1,format=rgb24"
+    if kind in {"long_strip", "long_strip_placeholder"}:
+        # Preserve the complete scrolling strip. The native engine's
+        # GPUBigImage tiles images beyond the hardware texture dimensions.
+        vf = alpha_safe_scale(
+            f"'max(2,trunc(iw*{scale}))'",
+            f"'max(2,trunc(ih*{scale}))'",
+            alpha,
+        )
     elif kind in {"background", "fullscreen_graphic", "large_png_scale_2_3"} and not alpha:
         # Opaque photographic art: lanczos keeps the most detail and has no
         # alpha edges to corrupt.
@@ -331,7 +341,7 @@ def walk_sources(src_root: Path):
         if dirpath == src_root_str:
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            if name in SKIP_NAMES:
+            if name in SKIP_NAMES or name.startswith("._"):
                 continue
             yield Path(dirpath) / name
 
@@ -401,19 +411,26 @@ def run_job(job):
     src = Path(job["src_path"])
     dst = Path(job["dst_path"])
     dst.parent.mkdir(parents=True, exist_ok=True)
-    cmd = job["command"]
-    if cmd and cmd[0] == "copy":
-        try:
-            shutil.copy2(src, dst)
-            return job, 0, ""
-        except OSError as e:
-            return job, 1, str(e)
+    # Convert beside the final output and publish only complete successes.
+    # A failed ffmpeg process must not replace an already usable asset.
+    with tempfile.NamedTemporaryFile(dir=dst.parent, prefix=".native-", suffix=dst.suffix, delete=False) as stream:
+        temporary = Path(stream.name)
+    cmd = list(job["command"])
     try:
+        if cmd and cmd[0] == "copy":
+            shutil.copy2(src, temporary)
+            os.replace(temporary, dst)
+            return job, 0, ""
+        cmd[-1] = str(temporary)
         res = subprocess.run(cmd, capture_output=True, check=False)
-    except FileNotFoundError as e:
+        if res.returncode == 0:
+            os.replace(temporary, dst)
+        err = res.stderr.decode("utf-8", errors="replace") if res.returncode != 0 else ""
+        return job, res.returncode, err
+    except OSError as e:
         return job, 1, str(e)
-    err = res.stderr.decode("utf-8", errors="replace") if res.returncode != 0 else ""
-    return job, res.returncode, err
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -431,7 +448,7 @@ def main() -> int:
         "--scale", type=float, default=0.5,
         help="Image prescale factor. MUST equal the engine's --render-scale; "
              "the value is stamped into <out>/render_scale.txt, which the "
-             "loader reads at boot (absent marker = legacy 0.6666667 tree). "
+             "native engine reads at boot (absent marker = original size). "
              "Default: 0.5 (canvas ~= the Vita's 960x544 output).",
     )
     parser.add_argument(
@@ -443,7 +460,7 @@ def main() -> int:
         choices=[
             "background", "sprite", "mouth_strip", "fullscreen_graphic",
             "script_ui", "thumbnail", "trailer_image",
-            "long_strip_placeholder", "large_png_scale_2_3",
+            "long_strip", "long_strip_placeholder", "large_png_scale_2_3",
             "normal_video", "alpha_masked_video",
             "voice", "bgm", "se", "pam", "copy",
         ],
@@ -475,10 +492,13 @@ def main() -> int:
 
     print(f"Walking {src_root} ...")
     jobs = plan_jobs(src_root, out_root, skip_audio=args.skip_audio, scale=scale)
+    all_jobs = jobs
     print(f"Planned {len(jobs)} job(s).")
 
     if args.only:
         only = set(args.only)
+        if "long_strip_placeholder" in only:
+            only.add("long_strip")
         before = len(jobs)
         jobs = [j for j in jobs if j["kind"] in only]
         print(f"Filtered to {len(jobs)}/{before} via --only.")
@@ -487,7 +507,7 @@ def main() -> int:
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest_jobs = []
     counts = {}
-    for j in jobs:
+    for j in all_jobs:
         counts[j["kind"]] = counts.get(j["kind"], 0) + 1
         manifest_jobs.append({
             "source": j["source"],
@@ -513,19 +533,22 @@ def main() -> int:
     if args.dry_run:
         return 0
 
-    (out_root / "render_scale.txt").write_text(scale + "\n")
-    print(f"Stamped {out_root / 'render_scale.txt'} = {scale}")
-
     todo = []
     for j in jobs:
         src = Path(j["src_path"])
         dst = Path(j["dst_path"])
-        if not args.force and not needs_conversion(src, dst):
+        # Rebuild legacy cropped strips even when their timestamp is newer.
+        strip_mismatch = j["kind"] == "long_strip" and png_size(dst) != (
+            max(2, int(j["meta"]["width"] * args.scale)),
+            max(2, int(j["meta"]["height"] * args.scale)),
+        )
+        if not args.force and not strip_mismatch and not needs_conversion(src, dst):
             continue
         todo.append(j)
     print(f"To convert: {len(todo)} (skipping {len(jobs) - len(todo)} up-to-date)")
 
     failures = 0
+    failed_outputs = set()
     start = time.time()
     completed = 0
     last_print = 0.0
@@ -537,6 +560,7 @@ def main() -> int:
             completed += 1
             if rc != 0:
                 failures += 1
+                failed_outputs.add(job["output"])
                 msg = err.strip()[:500] if err else ""
                 print(
                     f"FAIL [{job['kind']}] {job['source']}: rc={rc}\n{msg}",
@@ -550,6 +574,16 @@ def main() -> int:
                     f"  progress: {completed}/{len(todo)}  fail={failures}  "
                     f"{rate:.1f}/s"
                 )
+
+    dimensions, metadata_warnings = collect_dimensions(all_jobs, out_root, failed_outputs)
+    write_dimensions(out_root, dimensions)
+    for warning in metadata_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+    if failures == 0:
+        marker = out_root / ".render_scale.txt.tmp"
+        marker.write_text(scale + "\n")
+        marker.replace(out_root / "render_scale.txt")
+        print(f"Stamped {out_root / 'render_scale.txt'} = {scale}")
 
     elapsed = time.time() - start
     print(

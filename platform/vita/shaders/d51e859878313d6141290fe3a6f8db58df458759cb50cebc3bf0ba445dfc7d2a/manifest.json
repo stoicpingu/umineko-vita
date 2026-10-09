@@ -1,0 +1,100 @@
+{
+  "format": "ons-gxp-matrix-table-v1",
+  "abi": "d51e859878313d6141290fe3a6f8db58df458759cb50cebc3bf0ba445dfc7d2a",
+  "source": "Vita developer export from the native engine and bundled SDL_gpu shader corpus",
+  "sdk_vitagl_sha256": "fa7f030ef14d90fa427e81f63d996f2f3d74b763f717b4c046c7c7eefac32bf6",
+  "shaders": {
+    "35632-03be7fb3178e7220.bin": {
+      "source": "sdl-untextured_fragment",
+      "sha256": "811d6fe73e3071463b472c8ad3199a1b12d595af1189c5faf9a23ba6dd7a6df9"
+    },
+    "35632-1298bd871e90929d.bin": {
+      "source": "pixelate.frag",
+      "sha256": "5cc2413b21aa4bc520d6386d51417df081c08775c97e6d9210eb767a17dfedb3"
+    },
+    "35632-13f12fb9c3eeec66.bin": {
+      "source": "multiplyAlpha.frag",
+      "sha256": "edd9f22320671dbeffaf3a63ef74a06c205927823815cf0377618bd1ab86399d"
+    },
+    "35632-15acf5802a439284.bin": {
+      "source": "blurH.frag",
+      "sha256": "e140a4321690ae62fd378f416b8dac7745a004ee91abd446ba18498d653e4032"
+    },
+    "35632-1f04fc035a4c950d.bin": {
+      "source": "effectWhirl.frag",
+      "sha256": "cc26abbd3a98e5749ae66f232b4a6e79ad1e64e6f7c93541e0a78aad0196057c"
+    },
+    "35632-268360832d81e80c.bin": {
+      "source": "effectWarp.frag",
+      "sha256": "50cbf58edba444f2f463c5f4fa7dab369755f0a6fa8fa52d33f12d8f428ca87a"
+    },
+    "35632-3c96abc93c6ff844.bin": {
+      "source": "cropByMask.frag",
+      "sha256": "9eecfd36af56247445b16707bbf910b6749445d0a2138f1ba028838317a76fcd"
+    },
+    "35632-4ccfb2caaf09b7cb.bin": {
+      "source": "textFade.frag",
+      "sha256": "b289df1179b59341927969336226589ebf5afe299a7bbdfb6be65541e3c7afcc"
+    },
+    "35632-5c113b83ffeed557.bin": {
+      "source": "glyphGradient.frag",
+      "sha256": "2a38e4453f3491a05b7c87ebeb779be3dc75026d66fc4bcc06ac56132ba723d3"
+    },
+    "35632-6f06d675cba3860c.bin": {
+      "source": "effectTrvswave.frag",
+      "sha256": "39752928cfe16e75ef18e3312da0a9a9418b5a1230fe83c552681fa6c95ab2f9"
+    },
+    "35632-7b751f0f62d0c098.bin": {
+      "source": "sdl-textured_fragment",
+      "sha256": "228979bc8bf09a8cc2035ecfb7f33c38f0deeea55f55245640d9b7932fcab6a9"
+    },
+    "35632-84b23b749edf7d4a.bin": {
+      "source": "breakup.frag",
+      "sha256": "0073090e25a6322d3dc7d4fb326618794b5e27cae677495a4cdf7b92d149ac7f"
+    },
+    "35632-8a3cf9c7d79325b3.bin": {
+      "source": "mergeAlpha.frag",
+      "sha256": "c93b58a31c2a72addc1d9af71e1c8b981fc5b3b8388a8d742c5aa94426a46bf9"
+    },
+    "35632-a0e1d27d94e995ab.bin": {
+      "source": "alphaOutsideTextures.frag",
+      "sha256": "564ad1819d464fb06945a413748796744d9fa359c7d8923c28f2806645ad28a4"
+    },
+    "35632-a89f3d7367adebff.bin": {
+      "source": "colorModification.frag",
+      "sha256": "e1ef5b14c75b83240c57c16e84e7cc4031ef77b4e236f8b7f3e01d8a01e3a615"
+    },
+    "35632-ae47cbd16e7914b8.bin": {
+      "source": "blurV.frag",
+      "sha256": "f8345a666548e93247aa369aed4d9ca9ad9ab01bb0215b263b04a71db43891da"
+    },
+    "35632-c45a65519c28e1bd.bin": {
+      "source": "blendByMask.frag",
+      "sha256": "b16ce187d8a589e8b3ac228331036c735e3380d72a9fe8cfc1f5ef9c0476b5ef"
+    },
+    "35632-c8ab8d8b79abfa24.bin": {
+      "source": "glassSmash.frag",
+      "sha256": "9f72708f3253f971ba351d1a4eba8e649bb82498da0f607b691901bcf197b68b"
+    },
+    "35632-ce0435f06c8c5460.bin": {
+      "source": "colourConversion.frag",
+      "sha256": "b27afa59bdddb55c7b1faf9caf9dad029b02e2e991d795816da84274c3809c04"
+    },
+    "35632-d932a2d779f013d6.bin": {
+      "source": "renderSubtitles.frag",
+      "sha256": "938185d1dbede1da996c38abf5d2ec1167009ed9ba9058c3d28aedecc013e95c"
+    },
+    "35633-8aa91f7264ac2bce.bin": {
+      "source": "sdl-textured_vertex",
+      "sha256": "2159a6e43d72d588ff8e3d8837a1a4172bc658acd01cfa820239cea2aa9e766e"
+    },
+    "35633-e3d2bbac7b7af350.bin": {
+      "source": "sdl-untextured_vertex",
+      "sha256": "ea4dd51bd08ab994670c806eb05896d30ec01a900cdc91d98fad2522edec32b4"
+    },
+    "35633-e41aebf0503ebaad.bin": {
+      "source": "defaultVertex.vert",
+      "sha256": "48691e5aa22dd178fa0b575de2f52bb31b810055271d6f418d8dcb2640d0421a"
+    }
+  }
+}

@@ -1,239 +1,131 @@
-cmake_minimum_required(VERSION 3.14)
-
-if (NOT DEFINED ENV{VITASDK} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-  message(FATAL_ERROR "Please define VITASDK env var to point to your SDK path or set CMAKE_TOOLCHAIN_FILE.")
-endif ()
-
-set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "Toolchain file")
-
-project(so_loader C CXX)
-
-include("${VITASDK}/share/vita.cmake" REQUIRED)
-
-# Vita application configuration
-set(VITA_APP_NAME "Umineko")
-set(VITA_TITLEID "UMNK00001")
-set(VITA_VPKNAME "umineko")
-set(VITA_VERSION "01.00")
-set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
-
-# Optional: used for "send" and "dump" targets
-set(PSVITAIP "192.168.1.93" CACHE STRING "PSVita IP (for FTP access)")
-set(PARSECOREPATH "/Volumes/KODAK/Personal Stuff/vita/vita-parse-core/main.py"
-    CACHE STRING "vita-parse-core main.py")
-# vita-parse-core is Python 2 only
-set(PYTHON2 "$ENV{HOME}/.pyenv/versions/2.7.18/bin/python"
-    CACHE STRING "Python 2.7 interpreter for vita-parse-core")
-
-# Game-specific definitions
-set(DATA_PATH "ux0:data/umineko/" CACHE STRING "Path to data (with trailing /)")
-set(SO_PATH "${DATA_PATH}libmain.so" CACHE STRING "Path to .so")
-add_definitions(-DDATA_PATH="${DATA_PATH}" -DSO_PATH="${SO_PATH}")
-
-option(USE_SCELIBC_IO "Use SceLibcBridge for IO and some other std functions" ON)
-if (USE_SCELIBC_IO)
-  add_definitions(-DUSE_SCELIBC_IO)
-endif()
-
-set(SHADER_FORMAT "GLSL" CACHE STRING "Preferred shader format (one of 'GLSL', 'CG', 'GXP')")
-if (${SHADER_FORMAT} STREQUAL "GLSL")
-  add_definitions(-DUSE_GLSL_SHADERS)
-elseif (${SHADER_FORMAT} STREQUAL "CG")
-  add_definitions(-DUSE_CG_SHADERS)
-elseif (${SHADER_FORMAT} STREQUAL "GXP")
-  add_definitions(-DUSE_GXP_SHADERS)
-else()
-  message(FATAL_ERROR "SHADER_FORMAT option can only be one of: 'GLSL', 'CG', 'GXP'")
-endif()
-
-set(valid_dump_formats GLSL CG)
-option(DUMP_COMPILED_SHADERS "When using GLSL or CG shader format, cache compiled shaders on disk" OFF)
-if (DUMP_COMPILED_SHADERS)
-  if (SHADER_FORMAT IN_LIST valid_dump_formats)
-    add_definitions(-DDUMP_COMPILED_SHADERS)
-  else()
-    message(WARNING "DUMP_COMPILED_SHADERS has no effect for the chosen shader format ${SHADER_FORMAT}")
+cmake_minimum_required(VERSION 3.20)
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  if(NOT DEFINED ENV{VITASDK})
+    message(FATAL_ERROR "Set VITASDK to a native VitaSDK installation")
   endif()
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE FILEPATH "VitaSDK toolchain")
 endif()
+project(onscripter_ru_vita LANGUAGES C CXX)
+include("${VITASDK}/share/vita.cmake" REQUIRED)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(ONS_UPSTREAM "${CMAKE_CURRENT_SOURCE_DIR}/upstream/onscripter-ru")
+set(VITA_TITLEID "UMNK00001" CACHE STRING "Umineko release application ID")
+set(VITA_VERSION "01.10" CACHE STRING "Umineko release version (v1.1)")
+set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
+option(ONS_VITA_EXPORT_SHADERS "Developer-only: compile and export native shaders on the Vita" OFF)
+option(ONS_VITA_RENDER_DIAGNOSTICS "Run a small, one-shot GPU probe at the title" OFF)
+option(ONS_VITA_FILE_LOGGING "Developer-only: write native stdout/stderr logs to storage" OFF)
 
-option(SOLOADER_WRITE_LOG_FILE "Write runtime logs to DATA_PATH/loader.log" OFF)
-if (SOLOADER_WRITE_LOG_FILE)
-  add_definitions(-DSOLOADER_WRITE_LOG_FILE=1)
+find_program(Python3_EXECUTABLE NAMES python3 NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+find_program(ONS_HOST_CC NAMES cc clang gcc NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+file(GLOB_RECURSE ONS_RESOURCES CONFIGURE_DEPENDS "${ONS_UPSTREAM}/Resources/Shaders/*.frag" "${ONS_UPSTREAM}/Resources/Shaders/*.vert" "${ONS_UPSTREAM}/Resources/Images/*.png")
+list(FILTER ONS_RESOURCES EXCLUDE REGEX "/\\._")
+set(ONS_EMBED "${CMAKE_CURRENT_BINARY_DIR}/host-tools/ons-embed")
+add_custom_command(OUTPUT "${ONS_EMBED}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/host-tools"
+  COMMAND "${ONS_HOST_CC}" -std=c11 "${ONS_UPSTREAM}/Tools/embed/embed.c" -o "${ONS_EMBED}"
+  DEPENDS "${ONS_UPSTREAM}/Tools/embed/embed.c" VERBATIM)
+set(ONS_RESOURCE_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/Resources.cpp")
+add_custom_command(OUTPUT "${ONS_RESOURCE_SOURCE}"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_resources.py"
+    --tool "${ONS_EMBED}" --source "${ONS_UPSTREAM}" --output "${ONS_RESOURCE_SOURCE}"
+  DEPENDS "${ONS_EMBED}" ${ONS_RESOURCES} tools/embed_resources.py VERBATIM)
+
+# The MVP's local PNG build matches FreeType's setjmp ABI, unlike the
+# preinstalled SDK PNG archive. Both native applications use this same source.
+file(GLOB ONS_PNG_SOURCES CONFIGURE_DEPENDS native-bench/vendor/libpng/png*.c)
+add_library(ons_native_png STATIC ${ONS_PNG_SOURCES})
+target_include_directories(ons_native_png PUBLIC native-bench/vendor/libpng)
+target_compile_definitions(ons_native_png PRIVATE PNG_ARM_NEON_OPT=0)
+target_link_libraries(ons_native_png PUBLIC z)
+include(platform/vita/graphics.cmake)
+file(GLOB_RECURSE ONS_ENGINE_SOURCES CONFIGURE_DEPENDS "${ONS_UPSTREAM}/Engine/*.cpp")
+list(FILTER ONS_ENGINE_SOURCES EXCLUDE REGEX "/\\._")
+set(ONS_SUPPORT_SOURCES Support/AudioBridge.cpp Support/Cache.cpp Support/DirPaths.cpp
+  Support/DirtyRect.cpp Support/FileIO.cpp Support/Unicode.cpp External/slre.c)
+list(TRANSFORM ONS_SUPPORT_SOURCES PREPEND "${ONS_UPSTREAM}/")
+add_executable(onscripter_vita ${ONS_ENGINE_SOURCES} ${ONS_SUPPORT_SOURCES}
+  "${ONS_RESOURCE_SOURCE}" platform/vita/platform.cpp platform/vita/assets.cpp
+  platform/vita/gxm_checked.c platform/vita/gl_init.c platform/vita/render_diagnostics.cpp
+  platform/vita/startup_image.cpp)
+if(ONS_VITA_RENDER_DIAGNOSTICS)
+  target_compile_definitions(onscripter_vita PRIVATE ONS_VITA_RENDER_DIAGNOSTICS)
+endif()
+if(ONS_VITA_FILE_LOGGING)
+  target_compile_definitions(onscripter_vita PRIVATE ONS_VITA_FILE_LOGGING)
+endif()
+if(ONS_VITA_EXPORT_SHADERS)
+  target_compile_definitions(onscripter_vita PRIVATE ONS_VITA_EXPORT_SHADERS)
 else()
-  add_definitions(-DSOLOADER_WRITE_LOG_FILE=0)
+  add_custom_target(ons_validate_shaders
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/native_shaders.py"
+      --resources "${ONS_RESOURCE_SOURCE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/platform/vita/shaders/${ONS_SHADER_ABI}"
+    DEPENDS "${ONS_RESOURCE_SOURCE}" ${ONS_SHADER_BINARIES}
+    COMMENT "Validating every bundled shader against the compiled resource corpus"
+    VERBATIM)
+  add_dependencies(onscripter_vita ons_validate_shaders)
 endif()
+target_compile_definitions(onscripter_vita PRIVATE VITA PUBLIC_RELEASE USE_STD_REGEX USE_LUA SDL_MAIN_HANDLED)
+target_compile_options(onscripter_vita PRIVATE -O2 -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp -Wall -Wextra
+  -Wno-unused-parameter -Wno-missing-field-initializers -Wno-deprecated-declarations)
+target_include_directories(onscripter_vita PRIVATE "${ONS_UPSTREAM}" "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${VITASDK}/arm-vita-eabi/include/freetype2"
+  "${VITASDK}/arm-vita-eabi/include/harfbuzz"
+  "${VITASDK}/arm-vita-eabi/include/luajit-2.1")
+# ARM/Thumb tail-call veneers must remain valid after the Vita relocates RX.
+# GNU ld otherwise emits absolute literals without relocations for distant
+# imports (observed in SDL's sceKernelGetThreadId startup path).
+target_link_options(onscripter_vita PRIVATE -Wl,-q -Wl,--pic-veneer -Wl,--gc-sections "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/onscripter_vita.map")
+target_link_options(onscripter_vita PRIVATE -Wl,--wrap=vglInitExtended)
+foreach(ONS_GXM_CALL BeginScene EndScene ReserveVertexDefaultUniformBuffer
+    ReserveFragmentDefaultUniformBuffer SetUniformDataF Draw DrawInstanced
+    CreateRenderTarget DepthStencilSurfaceInit)
+  target_link_options(onscripter_vita PRIVATE "-Wl,--wrap=sceGxm${ONS_GXM_CALL}")
+endforeach()
+include(platform/vita/media.cmake)
+ons_vita_add_media(onscripter_vita)
+# Static SDK libraries have circular dependencies; resolve the complete native
+# graph here. No Android .so, Bionic/JNI bridge or kubridge is linked.
+target_link_libraries(onscripter_vita PRIVATE -Wl,--start-group ons_vita_gpu ons_native_png stdc++
+  SDL2_image ons_vita_mixer ons_vita_sdl2 freetype harfbuzz bz2 ass fribidi
+  ${ONS_VITA_MEDIA_LIBRARIES}
+  vorbisfile vorbis ogg opusfile opus mpg123 modplug xmp-lite
+  luajit-5.1 dl jpeg webp sharpyuv z m pthread
+  ons_vita_gl vitashark SceShaccCgExt taihen_stub SceShaccCg_stub mathneon
+  ScePower_stub SceCtrl_stub SceGxm_stub SceDisplay_stub SceAppMgr_stub SceAppUtil_stub
+  SceAudio_stub SceAudioIn_stub SceSysmodule_stub SceIofilemgr_stub SceCommonDialog_stub
+  SceTouch_stub SceHid_stub SceMotion_stub SceProcessmgr_stub SceIme_stub
+  SceKernelDmacMgr_stub SceSblSsMgr_stub SceAvPlayer_stub SceNet_stub SceNetCtl_stub -Wl,--end-group)
 
-# Unique debug definition for loader's logging to not interfere with anything
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  # With DEBUG_SOLOADER undefined every l_debug/l_info/l_warn/l_success/
-  # l_wait call in the loader (and the engine's android-log output routed
-  # through them) compiles to nothing. Uncomment to get them back on the
-  # console.
-  #add_definitions(-DDEBUG_SOLOADER)
-  # Uncomment this for verbose FalsoJNI logging:
-  #add_definitions(-DFALSOJNI_DEBUGLEVEL=0)
-  # Uncomment this for OpenGL logging:
-  #add_definitions(-DDEBUG_OPENGL)
-endif()
+include(platform/vita/sony_io.cmake)
 
-# makes sincos, sincosf, etc. visible
-add_definitions(-D_GNU_SOURCE -D__POSIX_VISIBLE=999999)
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -mfloat-abi=softfp -std=gnu11 -Wno-deprecated")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-q -mfloat-abi=softfp -std=gnu++20 -Wno-write-strings -Wno-psabi")
-
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O1 -g3")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -g3")
-else ()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -g0 -ffast-math")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g0 -ffast-math")
-endif()
-
-add_executable(${CMAKE_PROJECT_NAME}
-               source/main.c
-               source/dynlib.c
-               source/java.c
-               source/patch.c
-               source/reimpl/bits/_ctype.c
-               source/reimpl/controls.c
-               source/reimpl/controls.h
-               source/reimpl/egl.c
-               source/reimpl/errno.c
-               source/reimpl/io.c
-               source/reimpl/log.c
-               source/reimpl/mem.c
-               source/reimpl/pthr.c
-               source/reimpl/sys.c
-               source/reimpl/time64.c
-               source/reimpl/video.c
-               source/reimpl/asset_manager.cpp
-               source/utils/dialog.c
-               source/utils/glutil.c
-               source/utils/gxm_wrap.c
-               source/utils/init.c
-               source/utils/logger.c
-               source/utils/settings.c
-               source/utils/utils.c
-               lib/falso_jni/FalsoJNI.c
-               lib/falso_jni/FalsoJNI_ImplBridge.c
-               lib/falso_jni/FalsoJNI_Logger.c
-               lib/falso_jni/converter.c
-               lib/sha1/sha1.c
-               lib/fios/fios.c
-               lib/so_util/so_util.c)
-
-add_subdirectory(lib/libc_bridge)
-add_dependencies(${CMAKE_PROJECT_NAME} SceLibcBridge)
-
-target_include_directories(${CMAKE_PROJECT_NAME} SYSTEM
-                           PUBLIC ${CMAKE_SOURCE_DIR}/lib
-                           )
-
-target_include_directories(${CMAKE_PROJECT_NAME}
-                           PUBLIC ${CMAKE_SOURCE_DIR}/source
-                           )
-
-# Crash-proof vitaGL's unchecked GXM uniform reserves (source/utils/gxm_wrap.c)
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-                    -Wl,--wrap=sceGxmReserveVertexDefaultUniformBuffer
-                    -Wl,--wrap=sceGxmReserveFragmentDefaultUniformBuffer
-                    # SDL2's Vita video driver initializes vitaGL with
-                    # phycont_threshold=0, starving SceAvPlayer of contiguous
-                    # memory; gxm_wrap.c re-routes it.
-                    -Wl,--wrap=vglInitExtended)
-
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      SDL2
-                      SDL2main
-                      -Wl,--whole-archive pthread -Wl,--no-whole-archive
-                      OpenSLES
-                      sndfile
-                      mp3lame
-                      mpg123
-                      opus
-                      vorbis
-                      ogg
-                      vorbisenc
-                      vorbisfile
-                      FLAC
-                      stdc++
-                      # Vendored vitaGL @ c2a950f (lib/vitaGL-src/
-                      # VENDORED-COMMIT.txt); local patches are marked PIVAS.
-                      # Rebuild: make SOFTFP_ABI=1 CIRCULAR_VERTEX_POOL=2
-                      #   HAVE_GLSL_SUPPORT=1 -j8  (no LOG_ERRORS: =2 appends
-                      #   every GL error to ux0:/data/vitaGL.log, an exFAT
-                      #   write per line)
-                      ${CMAKE_SOURCE_DIR}/lib/vitaGL-src/libvitaGL.a
-                      vitashark
-                      SceShaccCgExt
-                      taihen_stub
-                      SceShaccCg_stub
-                      z
-                      m
-                      ScePgf_stub
-                      mathneon
-                      kubridge_stub
-                      ${CMAKE_BINARY_DIR}/lib/libc_bridge/stubs/libSceLibcBridge_stub.a
-                      SceHid_stub
-                      SceTouch_stub
-                      SceMotion_stub
-                      SceAppMgr_stub
-                      SceAppUtil_stub
-                      SceAudio_stub
-                      SceAudioIn_stub
-                      SceCommonDialog_stub
-                      SceDisplay_stub
-                      SceKernelDmacMgr_stub
-                      SceFios2_stub
-                      SceCtrl_stub
-                      SceGxm_stub
-                      ScePower_stub
-                      SceTouch_stub
-                      SceVshBridge_stub
-                      SceNet_stub
-                      SceNetCtl_stub
-                      SceIme_stub
-                      # Native hardware video decode (source/reimpl/video.c)
-                      SceAvPlayer_stub
-                      SceSysmodule_stub
-                      )
-
-vita_create_self(eboot.bin ${CMAKE_PROJECT_NAME} UNSAFE NOASLR)
-vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
-                VERSION ${VITA_VERSION}
-                NAME ${VITA_APP_NAME}
-                FILE ${CMAKE_SOURCE_DIR}/extras/cpuinfo cpuinfo
-                ${CMAKE_SOURCE_DIR}/extras/meminfo meminfo
-                ${CMAKE_SOURCE_DIR}/extras/urandom urandom
-                ${CMAKE_SOURCE_DIR}/extras/livearea/icon0.png sce_sys/icon0.png
-                ${CMAKE_SOURCE_DIR}/extras/livearea/pic0.png sce_sys/pic0.png
-                ${CMAKE_SOURCE_DIR}/extras/livearea/startup.png sce_sys/livearea/contents/startup.png
-                ${CMAKE_SOURCE_DIR}/extras/livearea/bg0.png sce_sys/livearea/contents/bg0.png
-                ${CMAKE_SOURCE_DIR}/extras/livearea/template.xml sce_sys/livearea/contents/template.xml
-                )
-
-add_custom_target(send
-                  COMMAND echo destroy | nc ${PSVITAIP} 1338
-                  COMMAND echo destroy | nc ${PSVITAIP} 1338
-                  COMMAND curl -T eboot.bin ftp://${PSVITAIP}:1337/ux0:/app/${VITA_TITLEID}/
-                  COMMAND echo launch ${VITA_TITLEID} | nc ${PSVITAIP} 1338
-                  DEPENDS ${VITA_VPKNAME}.vpk-vpk
-                  )
-
-add_custom_target(send_kvdb
-                  COMMAND echo destroy | nc ${PSVITAIP} 1338
-                  COMMAND curl -T eboot.bin ftp://${PSVITAIP}:1337/ux0:/app/${VITA_TITLEID}/
-                  COMMAND echo launch ux0:/app/${VITA_TITLEID}/eboot.bin | nc ${PSVITAIP} 1338
-                  DEPENDS ${VITA_VPKNAME}.vpk-vpk
-                  )
-
-add_custom_target(dump
-                  COMMAND ${CMAKE_SOURCE_DIR}/extras/scripts/get_dump.sh ${PSVITAIP}
-                  COMMAND ${PYTHON2} ${PARSECOREPATH} coredump so_loader
-                  VERBATIM
-                  )
-
-add_custom_target(reboot
-                  COMMAND echo reboot | nc ${PSVITAIP} 1338
-                  )
+vita_create_self(eboot.bin onscripter_vita UNSAFE)
+vita_create_vpk(umineko-native.vpk ${VITA_TITLEID} eboot.bin
+  VERSION ${VITA_VERSION} NAME "Umineko"
+  FILE ${ONS_SHADER_PACKAGE_FILES}
+       "${CMAKE_CURRENT_SOURCE_DIR}/platform/vita/data/native-image-sizes.tsv" native-image-sizes.tsv
+       "${ONS_UPSTREAM}/LICENSE" licenses/ONScripter-RU.txt
+       "${ONS_UPSTREAM}/LICENSE-GPLv2" licenses/GPL-2.0.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/README.md" README.md
+       "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md" THIRD_PARTY.md
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/FIOS.txt" licenses/FIOS.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/FFmpeg.txt" licenses/FFmpeg.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/FFmpeg-LGPL-2.1.txt" licenses/FFmpeg-LGPL-2.1.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/SDL2.txt" licenses/SDL2.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/SDL2_image.txt" licenses/SDL2_image.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/licenses/SDL2_mixer.txt" licenses/SDL2_mixer.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/vendor/sdl-gpu/LICENSE.txt" licenses/SDL_gpu.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/vendor/vitagl-translator/COPYING.LESSER" licenses/vitaGL-LGPL-3.0.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/vendor/vitagl-translator/COPYING" licenses/vitaGL-GPL-3.0.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/native-bench/vendor/libpng/LICENSE" licenses/libpng.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/native-bench/licenses/FreeType.txt" licenses/FreeType.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/native-bench/licenses/libogg.txt" licenses/libogg.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/native-bench/licenses/bzip2.txt" licenses/bzip2.txt
+       "${CMAKE_CURRENT_SOURCE_DIR}/extras/livearea/icon0.png" sce_sys/icon0.png
+       "${CMAKE_CURRENT_SOURCE_DIR}/extras/livearea/startup.png" sce_sys/livearea/contents/startup.png
+       "${CMAKE_CURRENT_SOURCE_DIR}/extras/livearea/bg0.png" sce_sys/livearea/contents/bg0.png
+       "${CMAKE_CURRENT_SOURCE_DIR}/extras/livearea/template.xml" sce_sys/livearea/contents/template.xml)

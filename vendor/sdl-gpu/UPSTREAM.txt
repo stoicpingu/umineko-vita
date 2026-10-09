@@ -1,0 +1,7 @@
+Upstream: https://github.com/umineko-project/sdl-gpu
+Commit: 255a1b5a1d3d54b2f030a88b19dec1ef85b48bb1
+License: MIT (LICENSE.txt)
+Local Vita changes: native vitaGL headers/version mapping; tracked mipmap filter; explicit errors for APIs unused by ONScripter-RU that vitaGL does not expose.
+Native integration also fixes physical target viewports/scissors, virtual target copies, pitch-safe upload/readback, and tracked mipmap filter state.
+Native startup also logs default shader stages and honors shader link failures before selecting a program.
+Native compiler diagnostics use the vitaShaRK public callback and log failed translated source before shader deletion.

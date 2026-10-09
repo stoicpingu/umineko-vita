@@ -1,9 +1,11 @@
 # --- build outputs ---------------------------------------------------------
 build/
+native-build/
+build-deps/
+host-build/
+__pycache__/
+*.pyc
 cmake-build-*/
-lib/libc_bridge/out/
-lib/vitaGL-src/libvitaGL.a
-lib/vitaGL-src/libvitaGL.a.*
 *.o
 *.obj
 *.a
@@ -12,17 +14,12 @@ lib/vitaGL-src/libvitaGL.a.*
 eboot.bin
 *.vpk
 
-# --- game data: never in the repo (4.8 GB; distributed as the password-
-#     protected archive, see README) and the engine binary built from
-#     engine/onscripter-ru ------------------------------------------------
+# --- local game data: never included in source or VPK ----------------------
 assets/
 apk/
 
-# --- engine build tree and pristine comparison copy ------------------------
-engine/onscripter-ru/DerivedData/
-engine/onscripter-ru/coredump
-engine/onscripter-ru/Tools/nscdec/nscdec
-engine/onscripter-ru-debug-current/
+# --- optional dependency build/install trees -------------------------------
+vendor/*/build/
 
 # --- device pulls, crash dumps, logs ---------------------------------------
 logs/
@@ -40,9 +37,32 @@ pivas_load_timing*.txt
 .vscode/
 .claude/
 
-# vitaGL upstream samples are not needed for the port
-lib/vitaGL-src/samples/
-
 # development log and design notes stay local
 state.md
 analysis/
+
+# Local downloaded references/sources
+research/
+references/
+downloads/
+japanese/
+portuguese/
+spanish/
+release/
+docs/
+AGENTS.md
+native-bench/
+
+# Local platform scripts, tools and tests
+extras/scripts/*.py
+platform/**/*.py
+platform/**/*.md
+platform/**/tests/
+tools/
+vendor/vitagl-translator/tests/
+vendor/sdl-gpu/tests/
+vendor/sdl-gpu/demos/
+vendor/sdl-gpu/AndroidCMake/
+
+
+
