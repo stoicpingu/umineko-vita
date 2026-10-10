@@ -148,8 +148,12 @@ std::unique_ptr<MediaProcController::Decoder> MediaProcController::findDecoder(A
 					case AVMEDIA_TYPE_VIDEO:
 						// Starting with 6f69f7a8bf6a0d013985578df2ef42ee6b1c7994 ffmpeg no longer sets decoding thread count to auto.
 						// Specify it ourselves.
-						#ifdef __vita__
-						codecContext->thread_count = 2;
+#ifdef __vita__
+						// SDL's Vita worker is a kernel thread, not a pthread. FFmpeg's
+						// slice/frame workers can make it enter a cancellable pthread
+						// wait with no PTE thread state (MPEG-2 butterfly movies crash).
+						// Decode on our existing asynchronous video worker instead.
+						codecContext->thread_count = 1;
 						if (nativeVideo.isOpen())
 							return std::make_unique<VideoDecoder>(codecContext, nullptr, stream);
 #else
