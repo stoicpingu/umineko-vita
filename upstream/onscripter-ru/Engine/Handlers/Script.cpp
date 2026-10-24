@@ -1233,7 +1233,10 @@ int ScriptHandler::readScript() {
 	const bool spanishPack = isScript("es.file") &&
 	    FileIO::accessFile("es.cfg", ons.script_path, FileType::File) &&
 	    FileIO::accessFile("language_es/graphics/system/loading_es.png", ons.script_path, FileType::File);
-	if (VitaSettings::apply(script_buffer, script_buffer_length, japanesePack, portuguesePack, spanishPack))
+	const bool chinesePack = isScript("cn.file") &&
+	    FileIO::accessFile("cn.cfg", ons.script_path, FileType::File) &&
+	    FileIO::accessFile("language_cn/fonts_cn/default.ttf", ons.script_path, FileType::File);
+	if (VitaSettings::apply(script_buffer, script_buffer_length, japanesePack, portuguesePack, spanishPack, chinesePack))
 		sendToLog(LogLevel::Info, "Native settings: compact Vita menu ready\n");
 	else
 		sendToLog(LogLevel::Warn, "Native settings: unknown script layout; retaining original menu\n");

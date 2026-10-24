@@ -1053,7 +1053,7 @@ int ONScripter::ownInit() {
 	sendToLog(LogLevel::Info, "save:archive_path: \"%s\"\n", archive_path.getAllPaths().c_str());
 
 #ifdef VITA
-	// Match the optional compact menu: stable English / JP / PT-BR / Español order.
+	// Match the optional compact menu: stable English / JP / PT-BR / Español / ZH-CN order.
 	script_list.emplace_back("en.file");
 	if (script_h.isScript("jp.file") && FileIO::accessFile("jp.cfg", script_path, FileType::File) &&
 	    FileIO::accessFile("jp/fonts_jp/default.ttf", script_path, FileType::File))
@@ -1064,6 +1064,9 @@ int ONScripter::ownInit() {
 	if (script_h.isScript("es.file") && FileIO::accessFile("es.cfg", script_path, FileType::File) &&
 	    FileIO::accessFile("language_es/graphics/system/loading_es.png", script_path, FileType::File))
 		script_list.emplace_back("es.file");
+	if (script_h.isScript("cn.file") && FileIO::accessFile("cn.cfg", script_path, FileType::File) &&
+	    FileIO::accessFile("language_cn/fonts_cn/default.ttf", script_path, FileType::File))
+		script_list.emplace_back("cn.file");
 #else
 	auto files = FileIO::scanDir(script_path, FileType::File);
 

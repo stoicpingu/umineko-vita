@@ -1,0 +1,114 @@
+name: Prepare simplified Chinese script
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/chinese-script.yml
+      - platform/vita/settings_script.hpp
+      - tools/tests/test_native_languages.py
+      - upstream/onscripter-ru/Engine/Core/Loader.cpp
+      - upstream/onscripter-ru/Engine/Core/ONScripter.cpp
+      - upstream/onscripter-ru/Engine/Handlers/Script.cpp
+  push:
+    branches: [main, simplified-chinese]
+    paths:
+      - .github/workflows/chinese-script.yml
+      - platform/vita/settings_script.hpp
+      - tools/tests/test_native_languages.py
+      - upstream/onscripter-ru/Engine/Core/Loader.cpp
+      - upstream/onscripter-ru/Engine/Core/ONScripter.cpp
+      - upstream/onscripter-ru/Engine/Handlers/Script.cpp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CN_SOURCE: 162a77eb764f181236b8044d1f75a93458ea4937
+
+jobs:
+  script:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the fixed SNS Team source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Umineko-Project-CN/umineko-scripting
+          ref: ${{ env.CN_SOURCE }}
+          path: build/cn-source
+          persist-credentials: false
+      - name: Generate the unmodified simplified Chinese script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C build/cn-source rev-parse HEAD)" = "$CN_SOURCE"
+          test "$(cat build/cn-source/current/last_cn)" = 8
+          for episode in {1..8}; do
+            test -d "build/cn-source/story/ep$episode/cn"
+          done
+          test -d build/cn-source/story/omake/cn
+          mkdir -p build/cn-script
+          php build/cn-source/update-manager/update-manager.php dscript build/cn-script/cn.txt build/cn-source cn > build/cn-build.log 2>&1
+          php build/cn-source/update-manager/update-manager.php script build/cn-script/cn.txt build/cn-script/cn.file 8 >> build/cn-build.log 2>&1
+          if test -s build/cn-build.log; then
+            cat build/cn-build.log
+            exit 1
+          fi
+          cp build/cn-source/misc/cn.cfg build/cn-source/LICENSE.txt build/cn-script/
+          {
+            echo 'Source: https://github.com/Umineko-Project-CN/umineko-scripting'
+            echo "Commit: $CN_SOURCE"
+            echo 'Locale: cn; episodes: 1-8 and omake; generator: original update-manager.php'
+            echo 'Commands: dscript cn.txt <source> cn; script cn.txt cn.file 8'
+            echo 'PC script preparation only. Not an installable Vita Chinese addon.'
+            php --version
+          } > build/cn-script/SOURCE.txt
+      - name: Verify content and round-trip through the Vita script encoding
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { inflateSync } from 'node:zlib';
+          const raw = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync('build/cn-script/cn.txt'));
+          assert(raw.includes(';gameid UminekoPS3ficationCn'));
+          assert(raw.includes('stralias localisation,"cn"'));
+          assert(/\p{Script=Han}/u.test(raw));
+          assert(!raw.includes('#locale_import'));
+          for (let ep = 1; ep <= 8; ++ep) {
+            assert(new RegExp(`^\\*umi${ep}_op\\s*$`, 'm').test(raw), `Missing EP${ep} opening`);
+            assert(new RegExp(`^\\*ura_${ep}_end\\s*$`, 'm').test(raw), `Missing EP${ep} final tea party`);
+          }
+          const engine = readFileSync('upstream/onscripter-ru/Engine/Handlers/Script.cpp', 'utf8');
+          const tableText = engine.match(/CompressedConversionTable\[256\]\{([\s\S]*?)\};/)[1];
+          const table = tableText.match(/0x[0-9a-f]+/gi).map(n => Number(n));
+          assert.equal(table.length, 256);
+          const headerValue = name => Number(engine.match(new RegExp(`${name}\\{(0x[0-9a-f]+|[0-9]+)\\}`, 'i'))[1]);
+          const crc = name => engine.match(new RegExp(`${name}\\[2\\]\\{([^}]+)\\}`))[1].split(',').map(n => Number(n.trim()));
+          const transform = (bytes, [a, b]) => bytes.map(value => table[value ^ a] ^ b);
+          const file = readFileSync('build/cn-script/cn.file');
+          assert.equal(file.readUInt32LE(0), headerValue('CompressedMagic'));
+          assert.equal(file.readUInt32LE(12), headerValue('CompressedVersion'));
+          assert.equal(file.readUInt32LE(4), file.length - 16);
+          const expected = Buffer.from(raw.replaceAll('.txt', '.file'));
+          assert.equal(file.readUInt32LE(8), expected.length);
+          const decompressed = inflateSync(transform(file.subarray(16), crc('CompressedCrcA')), { maxOutputLength: expected.length });
+          const decoded = transform(decompressed, crc('CompressedCrcB'));
+          assert.deepEqual(decoded, expected);
+          console.log(`Verified CN locale, all eight episode endpoints, and ${decoded.length} decoded script bytes.`);
+          JS
+          cd build/cn-script
+          sha256sum cn.txt cn.file cn.cfg LICENSE.txt SOURCE.txt > SHA256SUMS
+      - name: Test native language selection, saves and menu offsets
+        run: python3 tools/tests/test_native_languages.py build/cn-script/cn.file
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: umineko-cn-script
+          path: build/cn-script/
+          if-no-files-found: error
+          retention-days: 90

@@ -38,8 +38,9 @@ In order to properly install the game, follow these steps:
 4. **Install Hotfix v2**: Download and install [Hotfix v2](https://drive.google.com/file/d/1CqddCytePUTiaHStqhw6G7Gcfk6McnE4/view?usp=sharing). Extract and copy its contents into `ux0:data/umineko/`, overwriting existing files when prompted. It includes everything from the previous English Hotfix, so that one is no longer needed, and it applies to every language. Install it before or after the language addons; the order does not matter.
 5. **(Optional) Install Language Addons**:
    - Language addons are available for **[Japanese (JP)](https://drive.google.com/file/d/11_y92UMVBXb-yFNN5KaO3Up25Jr22q1A/view?usp=drive_link)**, **[Brazilian Portuguese (PT-BR)](https://drive.google.com/file/d/1iQNFmuhpnWUwzsGJfr58sutvoaR72x6j/view?usp=drive_link)**, and **[Spanish (ES)](https://drive.google.com/file/d/1jTuhnCQhlD7dvvk1W61MRKE-_u6mvDdK/view?usp=drive_link)**.
+   - **Simplified Chinese (ZH-CN)** uses the same addon layout; see the [preparation and installation instructions](README.zh-CN.md). Scripts come from SNS Team; fonts and images are prepared locally from the user's PC installation.
    - All language addons install identically: extract the zip and copy the `umineko` folder directly to `ux0:data/`, overwriting any existing files when prompted.
-   - > ⚠️ **Save File Compatibility Note:** Each language runs its own dedicated script file (`en.file`, `jp.file`, `pt.file`, `es.file`) and maintains separate save states. Story progress saved in English cannot be loaded when playing in Japanese or another language, and vice-versa.
+   - > ⚠️ **Save File Compatibility Note:** Each language runs its own dedicated script file (`en.file`, `jp.file`, `pt.file`, `es.file`, `cn.file`) and maintains separate save states. Story progress saved in English cannot be loaded when playing in Japanese or another language, and vice-versa.
 6. **Install VPK**: Download and install `umineko.vpk` from the [Releases](https://github.com/stoicpingu/umineko-vita/releases/latest) page.
 
 The final layout under `ux0:data/umineko/` should look like this:
@@ -131,6 +132,7 @@ This generates `native-build/eboot.bin` and `native-build/umineko-native.vpk`. A
 - **[Umineko Project](https://www.umineko-project.org/)** — For the PS3-fication port, engine base, and asset pipeline.
 - **[07th Expansion](https://07th-expansion.net/) / Ryukishi07** — For *Umineko no Naku Koro ni*, and Alchemist for the PS3 release.
 - **Translation Teams & Authors**:
+  - **Simplified Chinese**: [SNS Team](https://snsteam.club/port/), based on the MMR Rokkenjima Investigation Team translation credited by SNS Team.
   - **English**: [Umineko Project](https://www.umineko-project.org/)
   - **Japanese**: AuroraWright ([JP Patch 1.3](https://github.com/AuroraWright/))
   - **Brazilian Portuguese**: [Knox Translations](https://knox.fansub.com.br/)

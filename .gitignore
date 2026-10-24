@@ -59,12 +59,13 @@ extras/scripts/*.py
 platform/**/*.py
 platform/**/*.md
 platform/**/tests/
-tools/
 !/tools/
 /tools/*
 !/tools/tests/
 /tools/tests/*
 !/tools/tests/test_native_video_threads.py
+!/tools/tests/test_native_languages.py
+!/tools/prepare_cn_assets.py
 vendor/vitagl-translator/tests/
 vendor/sdl-gpu/tests/
 vendor/sdl-gpu/demos/

@@ -103,28 +103,32 @@ inline bool moveRow(const ScriptIndex &script, std::vector<Edit> &edits,
     edits.push_back(std::move(edit));
     return true;
 }
-inline bool apply(char *buffer, size_t length, bool japanesePack = false, bool portuguesePack = false, bool spanishPack = false) {
-    const bool languages = japanesePack || portuguesePack || spanishPack;
+inline bool apply(char *buffer, size_t length, bool japanesePack = false, bool portuguesePack = false,
+                  bool spanishPack = false, bool chinesePack = false) {
+    const bool languages = japanesePack || portuguesePack || spanishPack || chinesePack;
     const int portugueseIndex = int(japanesePack) + 1;
     const int spanishIndex = int(japanesePack) + int(portuguesePack) + 1;
-    const int lastLanguage = int(japanesePack) + int(portuguesePack) + int(spanishPack);
+    const int chineseIndex = int(japanesePack) + int(portuguesePack) + int(spanishPack) + 1;
+    const int lastLanguage = int(japanesePack) + int(portuguesePack) + int(spanishPack) + int(chinesePack);
     const ScriptIndex script(buffer, length);
-    const bool japanese = script.find("\nlanguage japanese\n") != script.npos;
+    const bool subtitles = script.find("\nstralias set_song_subtitles,") != script.npos;
     // Restore the pending saved choice when opening Settings. Keep this in
     // the initialization block: older translations have short language
     // helpers whose original line/label offsets must remain unchanged.
     // Compact operators/command spacing fit the older Spanish line slots.
-    std::string selection = "operate_config read,$Free3,\"game-script\"\n";
-    if (japanesePack) selection += "if $Free3=\"jp.file\"mov%Free5,1\n";
-    if (portuguesePack) selection += "if $Free3=\"pt.file\"mov%Free5," + std::to_string(portugueseIndex) + "\n";
-    if (spanishPack) selection += "if $Free3=\"es.file\"mov%Free5," + std::to_string(spanishIndex) + "\n";
+    const std::string selection = R"ONS(operate_config read,$Free3,"game-script"
+for %Free6=0 to %Free2
+getscriptpath $Free4,%Free6
+if $Free3=$Free4 mov%Free5,%Free6
+next
+)ONS";
     // Adapt command strings before fitting them into the unchanged script lines.
     auto commands = [&](const char *section, std::string text) {
         auto replace = [&](const std::string &before, const std::string &after) {
             auto at = text.find(before);
             if (at != text.npos) text.replace(at, before.size(), after);
         };
-        if (japanese) {
+        if (!subtitles) {
             replace("lsp 315,set_song_subtitles,135,748\n", "");
             replace("gosub *settings_op_ed_song_subtitles\n", "");
             replace("spbtn 276,76\nspbtn 277,77\n", "");
@@ -134,7 +138,7 @@ inline bool apply(char *buffer, size_t length, bool japanesePack = false, bool p
         }
         if (!languages) return text;
         if (std::strcmp(section, "settings_elems") == 0) {
-            const auto y = japanese ? "748" : "922";
+            const auto y = subtitles ? "922" : "748";
             replace("print 1", std::string("lsp 314,set_game_language,135,") + y + "\ngosub *settings_game_language\nprint 1");
         }
         if (std::strcmp(section, "settings_loop") == 0) {
@@ -347,9 +351,10 @@ goto *settings_loop
         if (japanesePack) commands += "if %Free5 = 1 mov $Free3,\"JP\"\n";
         if (portuguesePack) commands += "if %Free5 = " + std::to_string(portugueseIndex) + " mov $Free3,\"PT-BR\"\n";
         if (spanishPack) commands += "if %Free5 = " + std::to_string(spanishIndex) + " mov $Free3,\"Español\"\n";
+        if (chinesePack) commands += "if %Free5 = " + std::to_string(chineseIndex) + " mov $Free3,\"ZH-CN\"\n";
         commands += language.text.substr(artwork);
         for (size_t at = commands.find(",226"); at != commands.npos; at = commands.find(",226", at + 4))
-            commands.replace(at, 4, japanese ? ",748" : ",922");
+            commands.replace(at, 4, subtitles ? ",922" : ",748");
         if (!replaceBody(script, edits, "settings_game_language", commands)) return false;
     }
     for (const auto &edit : edits) std::memcpy(buffer + edit.offset, edit.text.data(), edit.text.size());
