@@ -869,9 +869,12 @@ int main(int argc, char **argv) {
 		const bool spanishPack = ScriptHandler::isScript(root + "es.file") &&
 		    FileIO::accessFile(root + "es.cfg", FileType::File) &&
 		    FileIO::accessFile(root + "language_es/graphics/system/loading_es.png", FileType::File);
-		const int addons = int(japanesePack) + int(portuguesePack) + int(spanishPack);
+		const bool chinesePack = ScriptHandler::isScript(root + "cn.file") &&
+		    FileIO::accessFile(root + "cn.cfg", FileType::File) &&
+		    FileIO::accessFile(root + "language_cn/fonts_cn/default.ttf", FileType::File);
+		const int addons = int(japanesePack) + int(portuguesePack) + int(spanishPack) + int(chinesePack);
 		const char *selected = addons == 1 ?
-		    (japanesePack ? "jp.file" : portuguesePack ? "pt.file" : "es.file") : "en.file";
+		    (japanesePack ? "jp.file" : portuguesePack ? "pt.file" : spanishPack ? "es.file" : "cn.file") : "en.file";
 		copystr(ons.game_script, selected, sizeof(ons.game_script));
 		ons.script_is_set = true;
 		ons.ons_cfg_options["game-script"] = selected;
@@ -924,6 +927,9 @@ int main(int argc, char **argv) {
 	} else if (equalstr(ons.game_script, "es.file")) {
 		const std::string spanishSave = std::string(VitaPlatform::saveRoot()) + "es/";
 		ons.setSavePath(spanishSave.c_str());
+	} else if (equalstr(ons.game_script, "cn.file")) {
+		const std::string chineseSave = std::string(VitaPlatform::saveRoot()) + "cn/";
+		ons.setSavePath(chineseSave.c_str());
 	}
 	// The installed optimized asset set is fixed and trusted. Use the game's
 	// own supported branch to skip optional installation validation/UI.
